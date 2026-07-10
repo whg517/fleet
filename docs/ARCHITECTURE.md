@@ -2,7 +2,7 @@
 
 | 字段 | 内容 |
 |------|------|
-| 文档版本 | v1.0 |
+| 文档版本 | v1.1 |
 | 创建日期 | 2026-07-10 |
 | 状态 | Draft — 待评审 |
 
@@ -78,7 +78,7 @@
 2. **GitOps 模式** — 部署的期望状态存储在 Git，Argo CD 负责调和
 3. **模板化封装** — 服务部署逻辑封装在 Helm Chart / Ansible Role 中，平台只管契约
 4. **一切操作可审计** — 所有写操作记录 who/when/what/result
-5. **敏感数据加密存储** — kubeconfig、凭证等通过 AES-256-GCM 加密后存储在 PostgreSQL
+5. **敏感数据加密存储** — 通过云 KMS 信封加密（Envelope Encryption）保护主密钥，凭证数据经 AES-256-GCM 加密后存储在 PostgreSQL
 6. **通知统一走 Webhook** — 所有通知（审批/部署/构建/告警）通过 Webhook 统一发送，后续可扩展
 
 ## 3.1 Argo CD Sync 策略
@@ -123,6 +123,11 @@ Git Push → Webhook → 平台触发 Argo Workflow
 ```
 
 **并发控制**：同一 service + environment 组合加分布式锁（Redis），防止并发部署冲突。
+- 锁 Key：`deploy:lock:{service_id}:{environment_id}`
+- 锁 TTL：10 分钟（部署通常 < 5min，留 buffer）
+- 自动释放：TTL 到期自动释放；部署/配置变更完成后主动释放
+- 强制释放：operator 角色可强制释放（记录审计）
+- 互斥范围：部署和配置变更共享同一把锁
 
 ### 4.3 物理机部署流程
 
@@ -220,6 +225,21 @@ AuditLog
 
 Registry
   id, name, type (harbor), url, credentials_ref, created_at
+
+WebhookConfig
+  id, name, url, secret, events[] (approval/deployment/build/alert),
+  is_active, retry_count int default 3, retry_interval_sec int default 30,
+  created_at
+
+NotificationLog
+  id, webhook_config_id, event_type, payload jsonb,
+  status (pending/sent/failed), response_code int, attempts int,
+  sent_at, created_at
+
+AuditLog
+  id, user_id, action, resource_type, resource_id,
+  detail jsonb, ip, prev_hash, created_at
+  -- 独立表 INSERT-only，hash chain 防篡改，应用账号无 UPDATE/DELETE 权限
 ```
 
 ### 5.2 ER 关系
@@ -238,6 +258,53 @@ Deployment ──< Approval
 ```
 
 **Cluster 与 Environment 的关系**：
+- 当前阶段单集群，通过 namespace 隔离多环境（dev/test/pre/prod）
+- 一个 Cluster 承载多个 Environment
+- 后续扩展多集群时，可定义多个 Cluster 关联不同 Environment
+
+### 5.3 平台部署拓扑
+
+```
+管理集群 / 管理命名空间 (Management)
+┌──────────────────────────┐
+│  Go API (2 replicas)     │
+│  Next.js (静态托管)       │
+│  PostgreSQL (主从+Patroni)│
+│  Redis (3 Sentinel)      │
+│  Argo CD Server          │
+│  Argo Workflows          │
+└─────────────┬────────────┘
+              │ Argo CD API
+              ▼
+业务命名空间 (dev / test / pre / prod)
+┌──────────────────────────┐
+│  微服务 (100+)            │
+└──────────────────────────┘
+```
+
+- 平台组件部署在独立管理命名空间，与业务 namespace 资源隔离
+- 单集群场景下 Argo CD 通过 namespace 管理多环境
+- PostgreSQL 采用主从复制 + 自动 failover（Patroni）
+- Redis 采用 Sentinel 3 节点保证可用性
+
+### 5.4 状态对账机制
+
+定时对账任务，检测平台状态与 Argo CD 实际状态偏差：
+- **频率**：每 5 分钟执行一次
+- **逻辑**：遍历所有 Deployment，对比平台状态与 Argo CD Application 实际状态
+- **偏差处理**：状态不一致时更新平台记录，标记 `sync_drift = true`，通知运维
+- **Application 丢失**：Argo CD Application 被删除时平台自动重建
+
+### 5.5 回滚策略
+
+| 维度 | 策略 |
+|------|--------|
+| 触发条件 | Argo CD Application 状态为 Degraded 持续超过 5 分钟 |
+| 触发方式 | 手动触发（默认） / 自动触发（可选，按服务配置） |
+| 回滚操作 | `argocd app rollback`（回到上一个 healthy sync），不改 Git |
+| Git 同步 | 回滚后平台自动 Git commit 同步状态（异步） |
+| Prod 审批 | 自动回滚不需要审批；手动回滚到指定历史版本需审批 |
+| 成功判定 | Argo CD Application 状态恢复 Healthy |
 
 ---
 
@@ -246,8 +313,10 @@ Deployment ──< Approval
 ### 6.1 认证
 
 ```
-POST   /api/v1/auth/login              # OIDC 重定向
+POST   /api/v1/auth/login              # OIDC 重定向（含 PKCE）
 GET    /api/v1/auth/callback           # OIDC 回调
+POST   /api/v1/auth/refresh            # Refresh Token 刷新
+POST   /api/v1/auth/logout             # OIDC RP-Initiated Logout
 GET    /api/v1/auth/me                 # 当前用户信息 + 权限
 ```
 
@@ -304,6 +373,7 @@ GET    /api/v1/registries/:id/scans             # 镜像扫描结果
 ```
 GET    /api/v1/services/:id/config              # 当前配置
 PUT    /api/v1/services/:id/config              # 修改配置（触发 Argo CD sync）
+POST   /api/v1/services/:id/config/dry-run      # Helm template 渲染预览
 ```
 
 ### 6.9 审批
@@ -332,6 +402,54 @@ GET    /api/v1/services/:id/metrics             # 服务指标
 ```
 PUT    /api/v1/services/:id/scale               # 手动扩缩
 PUT    /api/v1/services/:id/hpa                 # HPA 策略
+```
+
+### 6.13 集群运维
+
+```
+GET    /api/v1/clusters/:id/pods                # Pod 列表与状态
+GET    /api/v1/clusters/:id/pods/:pod/logs       # Pod 日志
+POST   /api/v1/clusters/:id/nodes/:node/drain   # 节点排水
+```
+
+### 6.14 通知管理
+
+```
+GET    /api/v1/webhooks                         # Webhook 配置列表
+POST   /api/v1/webhooks                         # 创建 Webhook
+PUT    /api/v1/webhooks/:id                     # 更新 Webhook
+DELETE /api/v1/webhooks/:id                     # 删除 Webhook
+GET    /api/v1/notifications/logs                # 通知发送记录
+```
+
+---
+
+## 6A. API 通用约定
+
+### 分页
+
+```
+GET /api/v1/services?page=1&page_size=20
+
+响应: { data: [], pagination: { page, page_size, total } }
+```
+
+### 过滤与排序
+
+```
+GET /api/v1/services?team=order&status=active&env=prod&sort=-created_at
+```
+
+### 错误格式
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "service_name is required",
+    "details": [{ "field": "service_name", "issue": "required" }]
+  }
+}
 ```
 
 ---
@@ -483,53 +601,77 @@ internal/
 
 ## 11. 实施计划
 
-### Phase 1: 骨架搭建（2-3 周）
+### 人力假设
+
+| 角色 | 人数 | 职责 |
+|------|------|------|
+| 后端工程师 | 2 | Go API Server + 业务逻辑 + 基础设施对接 |
+| 前端工程师 | 1 | Next.js SPA 全部 UI |
+| DevOps/SRE | 0.5（兼职） | Argo CD/Workflows 部署、GitOps 仓库搭建 |
+| 测试工程师 | 0.5（兼职） | 后期介入，端到端测试 |
+
+### Phase 1: 骨架搭建（3 周）
 
 - Go 项目脚手架 + 基础框架（路由、中间件、配置加载）
 - PostgreSQL schema 设计 + migration
-- OIDC 认证接入
+- OIDC 认证接入（含 PKCE、Token 刷新、Logout）
 - RBAC 权限模型实现
+- KMS 信封加密接入
 - Next.js 前端项目初始化
 
-### Phase 2: 核心部署链路（3-4 周）
+**DoD**：用户可通过 OIDC 登录，RBAC 生效，DB migration 可运行，凭证加密存储可用
+
+### Phase 2: 核心部署链路（4 周）
 
 - 集群注册管理
-- 服务注册管理
+- 服务注册管理（含手动注册/API 导入版本）
 - Argo CD Application CRUD + 状态同步
 - K8s 部署流程（dev/test 直通）
-- 部署状态实时跟踪
+- 部署状态实时跟踪（WebSocket）
 - 回滚功能
+- 状态对账机制
 
-### Phase 3: 审批与审计（2 周）
+**DoD**：能通过平台部署示例 Helm Chart 到 dev 环境，状态实时可见，能回滚
+
+### Phase 3: 审批与审计（3 周）
 
 - 发布审批流程（pre/prod）
-- 审批通知（飞书/邮件）
-- 审计日志记录与查询
-- 配置变更管理
+- Webhook 通知中心
+- 审计日志（hash chain 防篡改）
+- 配置变更管理（含 dry-run 预览）
+- 部署锁完善
 
-### Phase 4: 构建链路（2-3 周）
+**DoD**：prod 部署走审批，审计日志完整，配置变更生效，dry-run 可用
+
+### Phase 4: 构建链路（3 周）
 
 - Argo Workflows 对接
 - 构建触发与状态跟踪
 - Harbor 镜像管理
 - 版本注册与 changelog
 
-### Phase 5: 物理机与外围（2-3 周）
+**DoD**：能触发 Argo Workflow 构建，镜像推 Harbor，版本自动注册
 
-- Ansible Runner 封装
-- 物理机部署流程
+### Phase 5: 迁移与外围（3 周）
+
+- 100+ 服务批量导入工具
+- Ansible Runner 封装 + 物理机部署
 - 监控集成（Prometheus）
-- 扩缩容
+- 扩缩容、Pod 日志、集群运维操作
 - 镜像扫描展示
 
-### Phase 6: 稳定化（2 周）
+**DoD**：试点服务全部迁移完成，物理机部署可用，监控集成可用
+
+### Phase 6: 稳定化（3 周）
 
 - 端到端测试
 - 性能优化
 - 文档完善
-- 上线
+- 3 个试点服务正式上线
 
-**预计总工期：13-17 周（3-4 个月）**
+**DoD**：端到端测试通过，API p95 < 200ms，3 个试点服务稳定运行
+
+**总工期：19 周（约 5 个月）**，含 20% buffer
 
 ---
 
@@ -538,7 +680,9 @@ internal/
 | 风险 | 概率 | 影响 | 对策 |
 |------|------|------|------|
 | Argo CD Application 管理复杂度超预期 | 中 | 中 | 先支持标准 Helm Chart 模式，逐步扩展 |
-| 100+ 服务迁移工作量 | 高 | 高 | 提供批量导入工具，优先迁移核心服务 |
-| 多集群网络连通性 | 中 | 高 | 提前验证网络方案，平台到集群 API Server 网络可达 |
-| 团队对 Argo CD/Workflows 不熟悉 | 中 | 中 | 前期做技术 spike，验证核心链路 |
+| 100+ 服务迁移工作量 | 高 | 高 | 提供批量导入工具，Phase 5 专项迁移 |
+| 多集群网络连通性 | 中 | 高 | 当前单集群已规避；后续扩展时提前验证 |
+| 团队对 Argo CD/Workflows 不熟悉 | 中 | 中 | Phase 1 前做技术 spike，验证核心链路 |
 | 前端工作量被低估 | 中 | 中 | MVP 阶段前端只做核心功能，管理类操作可用 API |
+| Git 并发写入瓶颈 | 中 | 中 | 部署锁串行化 Git commit；评估 batch commit 优化 |
+| Webhook 通知投递失败 | 中 | 高 | 重试机制（3 次指数退避）；后期引入死信队列 |

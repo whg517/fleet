@@ -10,3 +10,6 @@
 | [0006](./0006-postgres-redis.md) | 元数据存储用 PostgreSQL + Redis | Accepted | 2026-07-10 |
 | [0007](./0007-oidc-auth.md) | 认证采用 OIDC | Accepted | 2026-07-10 |
 | [0008](./0008-rbac-environment.md) | 权限模型采用 RBAC + 环境维度 | Accepted | 2026-07-10 |
+| [0009](./0009-kms-envelope-encryption.md) | 密钥管理采用云 KMS 信封加密 | Accepted | 2026-07-10 |
+| [0010](./0010-rollback-strategy.md) | 回滚策略 | Accepted | 2026-07-10 |
+| [0011](./0011-postgres-patroni.md) | PostgreSQL 自动 failover 采用 Patroni | Accepted | 2026-07-10 |
