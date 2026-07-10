@@ -75,7 +75,7 @@
 | ID | 功能项 | 优先级 | 描述 |
 |----|--------|--------|------|
 | D-01 | Helm 部署（K8s） | P0 | 通过 Argo CD Application 管理 Helm Chart 部署 |
-| D-02 | Ansible 部署（物理机） | P1 | 通过 Ansible Runner 部署到物理机/VM |
+| D-02 | Ansible 部署（物理节点） | P1 | 通过 Ansible Role 模板部署服务到物理节点，平台统一触发和跟踪 |
 | D-03 | 环境配置 override | P0 | 每个环境独立的 values override |
 | D-04 | 部署状态跟踪 | P0 | 实时获取 Argo CD sync 状态 |
 | D-05 | 回滚 | P0 | 回滚到上一个成功版本。触发条件：Degraded > 5min。策略：手动触发（默认）/自动触发（可选）。prod 自动回滚免审批，手动回滚到指定版本需审批 |

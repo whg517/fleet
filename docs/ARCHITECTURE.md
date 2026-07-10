@@ -18,7 +18,7 @@
 | 缓存/队列 | Redis | 部署状态缓存、异步任务 |
 | 构建引擎 | Argo Workflows | K8s 原生 CI，与 GitOps 体系一致 |
 | 部署引擎 (K8s) | Argo CD | GitOps 模式，声明式，有 diff/sync/rollback |
-| 部署引擎 (物理机) | Ansible | 幂等、模板化、成熟 |
+| 部署引擎 (物理节点) | Ansible | 幂等、模板化、K8s Job 隔离执行 |
 | 镜像仓库 | Harbor | 企业级，支持扫描和策略 |
 | 认证 | OIDC | 对接企业 SSO |
 | 监控 | Prometheus + AlertManager | 现有基础设施 |
@@ -45,7 +45,7 @@
 │   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐    │
 │   │ Argo         │   │ Argo CD       │   │ Ansible      │    │
 │   │ Workflows    │   │ (K8s 部署)    │   │ Runner       │    │
-│   │ (构建)       │   │               │   │ (物理机部署)  │    │
+│   │ (构建)       │   │               │   │ (物理节点)    │    │
 │   └──────┬───────┘   └──────┬───────┘   └──────┬───────┘    │
 │          ▼                  ▼                   ▼            │
 │   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐    │
@@ -129,16 +129,33 @@ Git Push → Webhook → 平台触发 Argo Workflow
 - 强制释放：operator 角色可强制释放（记录审计）
 - 互斥范围：部署和配置变更共享同一把锁
 
-### 4.3 物理机部署流程
+### 4.3 物理节点部署流程
 
 ```
 选择服务 + 版本 + 目标主机组
   → 权限校验
   → [prod] 审批流程
-  → 平台调用 Ansible Runner（ansible-playbook -i inventory -e @params.json）
-  → 收集执行结果
-  → 记录 + 审计
+  → 部署锁校验
+  → 平台创建 K8s Job（Ansible Runner 镜像）
+  → Job Pod 从 Secret 挂载 SSH 密钥
+  → 执行 ansible-playbook -i <动态inventory> -e @<参数>
+  → 平台轮询 Job 状态
+  → 收集执行结果 + 日志
+  → 记录 + 审计 + 通知
 ```
+
+**物理节点部署设计**：
+
+| 维度 | 方案 |
+|------|------|
+| 部署模板 | Ansible Role，含 manifest.yaml 契约（defaults=参数接口，tasks=部署逻辑） |
+| 执行环境 | K8s Job Pod，每次部署独立执行，与平台后端隔离 |
+| SSH 密钥 | K8s Secret 挂载到 Job Pod，不落平台后端磁盘 |
+| Inventory | 平台管理主机组（按环境分组），动态生成 inventory 文件 |
+| 版本管理 | 平台记录每次部署的 Role 版本 + 参数快照 |
+| 回滚 | 用上一次成功部署的参数重新执行 Ansible Role |
+| 幂等性 | Ansible 模块天然幂等，重复执行结果一致 |
+| 日志 | Job Pod stdout 实时采集，可在平台查看 |
 
 ### 4.4 配置变更流程
 
@@ -532,7 +549,7 @@ internal/
     argocd/                    # Argo CD API client
     argowf/                    # Argo Workflows API client
     harbor/                    # Harbor API client
-    ansible/                   # Ansible runner 封装
+    ansible/                   # Ansible Runner 封装（K8s Job 触发）
     git/                       # Git 操作（读 chart、写 values）
     prometheus/                # 监控查询
     kube/                      # K8s API（集群健康检查）
@@ -652,15 +669,14 @@ internal/
 
 **DoD**：能触发 Argo Workflow 构建，镜像推 Harbor，版本自动注册
 
-### Phase 5: 迁移与外围（3 周）
+### Phase 5: 物理节点与外围（3 周）
 
-- 100+ 服务批量导入工具
-- Ansible Runner 封装 + 物理机部署
+- Ansible Runner 封装 + 物理节点部署流程
 - 监控集成（Prometheus）
 - 扩缩容、Pod 日志、集群运维操作
 - 镜像扫描展示
 
-**DoD**：试点服务全部迁移完成，物理机部署可用，监控集成可用
+**DoD**：物理节点部署可用，监控集成可用，集群运维操作可用
 
 ### Phase 6: 稳定化（3 周）
 
@@ -671,6 +687,8 @@ internal/
 
 **DoD**：端到端测试通过，API p95 < 200ms，3 个试点服务稳定运行
 
+> **注**：平台不负责接管现有老服务迁移。物理节点部署能力作为标准化方案提供，新服务按需选择部署方式。
+
 **总工期：19 周（约 5 个月）**，含 20% buffer
 
 ---
@@ -680,7 +698,7 @@ internal/
 | 风险 | 概率 | 影响 | 对策 |
 |------|------|------|------|
 | Argo CD Application 管理复杂度超预期 | 中 | 中 | 先支持标准 Helm Chart 模式，逐步扩展 |
-| 100+ 服务迁移工作量 | 高 | 高 | 提供批量导入工具，Phase 5 专项迁移 |
+| 100+ 服务接入工作量 | 中 | 中 | 平台提供标准化接入流程，服务按需接入 |
 | 多集群网络连通性 | 中 | 高 | 当前单集群已规避；后续扩展时提前验证 |
 | 团队对 Argo CD/Workflows 不熟悉 | 中 | 中 | Phase 1 前做技术 spike，验证核心链路 |
 | 前端工作量被低估 | 中 | 中 | MVP 阶段前端只做核心功能，管理类操作可用 API |
