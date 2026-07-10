@@ -34,10 +34,10 @@
 ├──────────────────────────────────────────────────────────────┤
 │                     Go API Server                             │
 │          REST/WebSocket · OIDC · RBAC · 审计拦截              │
-├────────┬─────────┬────────┬────────┬───────┬────────┬────────┤
-│ 服务   │ 环境     │ 构建    │ 部署   │ 集群  │ 配置   │ 审批   │
-│ 目录   │ 管理     │ 触发    │ 编排   │ 纳管  │ 变更   │ 网关   │
-├────────┴─────────┴────────┴────────┴───────┴────────┴────────┤
+├────────┬─────────┬────────┬────────┬───────┬────────┬────────┬────────┐
+│ 服务   │ 环境     │ 构建    │ 部署   │ 集群  │ 配置   │ 审批   │ 通知   │
+│ 目录   │ 管理     │ 触发    │ 编排   │ 纳管  │ 变更   │ 网关   │ 中心   │
+├────────┴─────────┴────────┴────────┴───────┴────────┴────────┴────────┤
 │                   PostgreSQL · Redis                          │
 ├──────────────────────────────────────────────────────────────┤
 │                   执行面 (Execution Plane)                    │
@@ -64,8 +64,8 @@
 | 层 | 职责 |
 |----|------|
 | **前端 (Next.js SPA)** | 用户交互、数据展示、WebSocket 实时状态推送 |
-| **API Server (Go)** | 业务逻辑、认证授权、审计拦截、编排调度 |
-| **数据层 (PostgreSQL + Redis)** | 元数据持久化、缓存、异步任务队列 |
+| **API Server (Go)** | 业务逻辑、认证授权、审计拦截、编排调度、通知中心 |
+| **数据层 (PostgreSQL + Redis)** | 元数据持久化、缓存、异步任务队列、密钥加密存储 |
 | **执行面** | Argo Workflows（构建）、Argo CD（K8s 部署）、Ansible（物理机部署） |
 | **可观测层** | 对接现有 Prometheus/AlertManager/Loki，不自建 |
 
@@ -77,6 +77,17 @@
 2. **GitOps 模式** — 部署的期望状态存储在 Git，Argo CD 负责调和
 3. **模板化封装** — 服务部署逻辑封装在 Helm Chart / Ansible Role 中，平台只管契约
 4. **一切操作可审计** — 所有写操作记录 who/when/what/result
+5. **敏感数据加密存储** — kubeconfig、凭证等通过 AES-256-GCM 加密后存储在 PostgreSQL，密钥管理后续可对接 Vault
+
+## 3.1 Argo CD Sync 策略
+
+| 场景 | Sync 策略 | 说明 |
+|------|----------|------|
+| dev / test | auto-sync = true | Git commit 后自动部署，开发快速反馈 |
+| pre / prod | auto-sync = false (manual sync) | 平台触发 sync，确保审批流程不被绕过 |
+
+平台通过 Argo CD API 触发 manual sync，不依赖 Argo CD 的自动轮询。
+部署后通过 Argo CD API 轮询 Application 状态判断 Healthy / Degraded。
 
 ---
 
@@ -100,15 +111,16 @@ Git Push → Webhook → 平台触发 Argo Workflow
 选择服务 + 版本 + 环境
   → 权限校验
   → [pre/prod] 审批流程
+  → 部署锁校验（同一服务+环境不能并发部署）
   → 平台 Git commit 更新 environments/<env>/<service>.yaml
   → 更新 Argo CD Application（targetRevision / values）
-  → 触发 Argo CD Sync
+  → 平台触发 Argo CD Sync（dev/test auto-sync，pre/prod manual sync）
   → 轮询 Argo CD 状态 (Healthy / Progressing / Degraded)
-  → 成功 → 记录 + 审计
+  → 成功 → 记录 + 审计 + 通知
   → 失败 → 通知 + 可选自动回滚
 ```
 
-平台通过管理 Argo CD Application CRD 驱动部署，不直接操作 K8s。
+**并发控制**：同一 service + environment 组合加分布式锁（Redis），防止并发部署冲突。
 
 ### 4.3 物理机部署流程
 
@@ -210,12 +222,18 @@ User ──< Deployment
 User ──< AuditLog
 User ──< Approval
 
-Cluster ──< Environment
+Cluster ──< Environment     (一个环境属于一个集群；一个集群可含多个环境命名空间)
 Service ──< ServiceVersion
 Service ──< Deployment >── Environment
 Service ──< ConfigSnapshot >── Environment
+Service ──< ServiceDependency >── Service   (服务间依赖，自引用多对多)
 Deployment ──< Approval
 ```
+
+**Cluster 与 Environment 的关系**：
+- 一个 Cluster 可以承载多个 Environment（如大型集群上通过 namespace 隔离 dev/test）
+- 一个 Environment 只属于一个 Cluster（同一环境的部署目标唯一）
+- 如果 prod 需要多集群部署，则定义多个 prod Environment（如 prod-east、prod-west），各自关联不同 Cluster
 
 ---
 
@@ -385,6 +403,8 @@ internal/
     approval/                  # 审批
     audit/                     # 审计查询
     scaling/                   # 扩缩容
+    notification/              # 通知中心（飞书/邮件/webhook）
+    topology/                  # 服务拓扑与依赖
 
   infra/                       # 基础设施对接层
     argocd/                    # Argo CD API client
@@ -394,6 +414,8 @@ internal/
     git/                       # Git 操作（读 chart、写 values）
     prometheus/                # 监控查询
     kube/                      # K8s API（集群健康检查）
+    secrets/                   # 密钥加密存储（AES-256-GCM）
+    notify/                    # 通知渠道（飞书 webhook / SMTP / 通用 webhook）
 
   store/                       # 持久层
     postgres/                  # PostgreSQL 实现
@@ -406,7 +428,40 @@ internal/
 
 ---
 
-## 9. 失败模式与容灾
+## 9. WebSocket 实时推送
+
+### 频道设计
+
+| 频道 | 格式 | 推送内容 |
+|------|------|----------|
+| 部署状态 | `deployment:{id}` | status 变更、进度更新、完成/失败事件 |
+| 服务健康 | `service:{id}:health` | 健康检查状态变化 |
+| 审批通知 | `user:{id}:approvals` | 新的审批请求、审批结果 |
+| 集群状态 | `cluster:{id}` | 集群健康状态变化 |
+
+### 消息格式
+
+```json
+{
+  "type": "deployment.status",
+  "data": {
+    "deployment_id": "xxx",
+    "status": "deploying",
+    "progress": "syncing",
+    "timestamp": "2026-07-10T08:00:00Z"
+  }
+}
+```
+
+### 实现机制
+
+- 前端建立 WebSocket 连接，按权限订阅频道
+- 后端通过 Redis Pub/Sub 在多实例间同步消息
+- 连接断开后自动重连 + 增量补全（通过 deployment_id 查询最新状态）
+
+---
+
+## 10. 失败模式与容灾
 
 | 故障场景 | 影响范围 | 缓解策略 |
 |---------|---------|---------|
@@ -422,7 +477,7 @@ internal/
 
 ---
 
-## 10. 实施计划
+## 11. 实施计划
 
 ### Phase 1: 骨架搭建（2-3 周）
 
@@ -474,7 +529,7 @@ internal/
 
 ---
 
-## 11. 风险与对策
+## 12. 风险与对策
 
 | 风险 | 概率 | 影响 | 对策 |
 |------|------|------|------|
