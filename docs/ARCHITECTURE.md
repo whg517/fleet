@@ -174,13 +174,44 @@ Git Push → Webhook → 平台触发 Argo Workflow
 ```
 开发提交部署到 pre/prod 的请求
   → 平台记录 pending approval
-  → 通知有审批权限的人（飞书/邮件）
+  → 通知有审批权限的人（Webhook）
   → 审批人 approve / reject
   → approve → 自动执行部署
   → reject → 记录并通知提交人
+  → 超时 24h → 自动 reject 并通知提交人
 ```
 
 单级审批，非工作流引擎。
+
+### 4.6 服务接入流程
+
+```
+运维/开发发起服务接入
+  → 创建 Service 记录（名称、deploy_type、owner_team）
+  → 关联 Helm Chart（chart_name、chart_repo）或 Ansible Role
+  → 关联 Harbor 项目（镜像仓库路径）
+  → 初始化环境配置（为每个环境生成默认 values override）
+  → 创建 Argo CD Application（每个环境一个）
+  → 服务状态标记为 active
+  → 记录审计
+```
+
+接入完成后服务即可通过平台部署。
+
+### 4.7 服务冻结/解冻流程
+
+```
+运维触发冻结
+  → Service 状态标记为 frozen
+  → 所有新部署请求被拒绝（返回冻结错误）
+  → 所有配置变更请求被拒绝
+  → 进行中的部署不受影响（等待完成）
+  → Webhook 通知相关人员
+
+运维触发解冻
+  → Service 状态恢复 active
+  → 正常操作恢复
+```
 
 ---
 
@@ -205,7 +236,7 @@ Cluster
 
 Service
   id, name, description, owner_team, deploy_type (k8s / vm),
-  chart_name, chart_repo, status, created_at
+  chart_name, chart_repo, status (active / frozen / offline), created_at
 
 ServiceVersion
   id, service_id, version, image_ref, git_commit,
