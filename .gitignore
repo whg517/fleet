@@ -1,0 +1,39 @@
+# Dependencies
+vendor/
+
+# Build
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config
+*.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# Test
+coverage.out
+coverage.html
+
+# Next.js
+.next/
+node_modules/
+
+# OpenClaw workspace files
+.sopenclaw/
