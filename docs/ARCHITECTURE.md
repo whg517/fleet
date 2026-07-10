@@ -2,7 +2,7 @@
 
 | 字段 | 内容 |
 |------|------|
-| 文档版本 | v1.1 |
+| 文档版本 | v1.2 |
 | 创建日期 | 2026-07-10 |
 | 状态 | Draft — 待评审 |
 
@@ -337,9 +337,9 @@ Deployment ──< Approval
 
 ### 5.4 状态对账机制
 
-定时对账任务，检测平台状态与 Argo CD 实际状态偏差：
-- **频率**：每 5 分钟执行一次
-- **逻辑**：遍历所有 Deployment，对比平台状态与 Argo CD Application 实际状态
+检测平台状态与 Argo CD 实际状态偏差：
+- **实时**：K8s informer/watch 模式监听 Argo CD Application CRD 变更（替代轮询）
+- **补偿**：每 5 分钟执行一次全量对账（弥补 watch 事件丢失）
 - **偏差处理**：状态不一致时更新平台记录，标记 `sync_drift = true`，通知运维
 - **Application 丢失**：Argo CD Application 被删除时平台自动重建
 
@@ -350,9 +350,55 @@ Deployment ──< Approval
 | 触发条件 | Argo CD Application 状态为 Degraded 持续超过 5 分钟 |
 | 触发方式 | 手动触发（默认） / 自动触发（可选，按服务配置） |
 | 回滚操作 | `argocd app rollback`（回到上一个 healthy sync），不改 Git |
-| Git 同步 | 回滚后平台自动 Git commit 同步状态（异步） |
+| auto-sync 暂停 | 回滚后临时关闭 Argo CD auto-sync，防止 Git 中的新版本覆盖回滚 |
+| Git 同步 | Git commit 同步期望状态后恢复 auto-sync |
 | Prod 审批 | 自动回滚不需要审批；手动回滚到指定历史版本需审批 |
 | 成功判定 | Argo CD Application 状态恢复 Healthy |
+
+### 5.6 Git 写入策略
+
+100+ 服务并发部署时，Git commit 可能产生 push 冲突。策略：
+- 平台后端维护 **Git 写入队列**，所有 Git commit 操作串行化执行
+- 单次 commit 可 batch 多个文件变更（如同时更新多个环境的 values）
+- push 冲突时自动 pull-rebase-push 重试（最多 3 次）
+- 重试失败时部署标记为 failed，通知运维
+
+### 5.7 配置变更安全防护
+
+配置变更可能导致服务启动失败。防护策略：
+
+| 阶段 | 防护措施 |
+|------|----------|
+| 提交前 | Helm values schema 校验 + dry-run 渲染预览 |
+| 部署中 | Argo CD sync 后等待健康检查（readiness probe） |
+| 失败检测 | Argo CD Application 状态为 Degraded 超过 3min |
+| 自动回退 | 回退到上一个 ConfigSnapshot（Git revert + 重新 sync） |
+| 通知 | 配置回退时 Webhook 通知发起人和运维 |
+
+### 5.8 部署锁高可用
+
+部署锁主要依赖 Redis，增加 PostgreSQL 兜底：
+- **正常流程**：Redis SET NX + TTL 获取锁
+- **Redis 故障**：降级到 PG 行级锁（`SELECT ... FOR UPDATE SKIP LOCKED`）
+- **Sentinel failover 期间**：锁 TTL（10min）覆盖 failover 窗口（10-30s）
+- **锁超时**：TTL 到期自动释放，防止死锁
+
+### 5.9 物理节点部署的 GitOps 补全
+
+物理节点部署虽不走 Argo CD，但通过 Git 补全审计链路：
+- 每次部署将 **参数快照 + Role 版本（Git tag/commit hash）** commit 到 `ansible/deployments/` 目录
+- 回滚时从 Git 历史读取上一次的 Role 版本和参数，用旧版 Role 执行
+- 审计链路：Git history（参数版本） + AuditLog（操作记录）双重追溯
+
+### 5.10 测试策略
+
+| 层级 | 策略 |
+|------|--------|
+| 单元测试 | Go 后端 domain/infra 层全面覆盖，目标覆盖率 > 80% |
+| 集成测试 | infra 层与 Argo CD/Harbor/Git 的 mock 集成测试 |
+| 端到端测试 | M2 完成后构建 E2E 测试（部署全链路） |
+| Migration 测试 | 每次 schema 变更验证 up/down migration |
+| 前端测试 | 关键交互页面组件测试，E2E 覆盖核心流程 |
 
 ---
 
@@ -647,80 +693,68 @@ internal/
 
 ---
 
-## 11. 实施计划
+## 11. 功能里程碑
 
-### 人力假设
+项目基于 AI 辅助开发，不设固定人力配置和工期排期。按功能模块组织交付里程碑，每个里程碑定义交付物和验收标准。
 
-| 角色 | 人数 | 职责 |
-|------|------|------|
-| 后端工程师 | 2 | Go API Server + 业务逻辑 + 基础设施对接 |
-| 前端工程师 | 1 | Next.js SPA 全部 UI |
-| DevOps/SRE | 0.5（兼职） | Argo CD/Workflows 部署、GitOps 仓库搭建 |
-| 测试工程师 | 0.5（兼职） | 后期介入，端到端测试 |
+### M1: 基础设施与认证
 
-### Phase 1: 骨架搭建（3 周）
-
-- Go 项目脚手架 + 基础框架（路由、中间件、配置加载）
-- PostgreSQL schema 设计 + migration
-- OIDC 认证接入（含 PKCE、Token 刷新、Logout）
-- RBAC 权限模型实现
-- KMS 信封加密接入
+- Go 项目脚手架（路由、中间件、配置加载）
+- PostgreSQL schema + migration
+- OIDC 认证（PKCE、Token 刷新、Logout）
+- RBAC 权限模型
+- KMS 信封加密
 - Next.js 前端项目初始化
 
-**DoD**：用户可通过 OIDC 登录，RBAC 生效，DB migration 可运行，凭证加密存储可用
+**验收**：OIDC 登录可用，RBAC 生效，凭证加密存储可用
 
-### Phase 2: 核心部署链路（4 周）
+### M2: 核心部署链路
 
-- 集群注册管理
-- 服务注册管理（含手动注册/API 导入版本）
-- Argo CD Application CRUD + 状态同步
+- 集群注册 + 服务接入流程（D-08）
+- Argo CD Application 管理 + 状态同步（informer/watch 模式）
 - K8s 部署流程（dev/test 直通）
 - 部署状态实时跟踪（WebSocket）
-- 回滚功能
-- 状态对账机制
+- 回滚 + 状态对账
+- 部署前置校验（D-10）
 
-**DoD**：能通过平台部署示例 Helm Chart 到 dev 环境，状态实时可见，能回滚
+**验收**：能部署 Helm Chart 到 dev 环境，状态实时可见，能回滚
 
-### Phase 3: 审批与审计（3 周）
+### M3: 审批与配置
 
-- 发布审批流程（pre/prod）
-- Webhook 通知中心
+- 发布审批流程（pre/prod）+ 24h 超时
+- Webhook 通知中心 + 通知合并策略
 - 审计日志（hash chain 防篡改）
-- 配置变更管理（含 dry-run 预览）
-- 部署锁完善
+- 配置变更管理（dry-run + 安全防护）
+- 部署锁完善（PG 兜底）
 
-**DoD**：prod 部署走审批，审计日志完整，配置变更生效，dry-run 可用
+**验收**：prod 部署走审批，审计完整，配置变更生效
 
-### Phase 4: 构建链路（3 周）
+### M4: 构建链路
 
 - Argo Workflows 对接
 - 构建触发与状态跟踪
-- Harbor 镜像管理
-- 版本注册与 changelog
+- Harbor 镜像管理 + 版本注册
 
-**DoD**：能触发 Argo Workflow 构建，镜像推 Harbor，版本自动注册
+**验收**：能触发构建，镜像推 Harbor，版本自动注册
 
-### Phase 5: 物理节点与外围（3 周）
+### M5: 物理节点与运维
 
-- Ansible Runner 封装 + 物理节点部署流程
+- Ansible Runner（K8s Job 隔离执行）
 - 监控集成（Prometheus）
 - 扩缩容、Pod 日志、集群运维操作
 - 镜像扫描展示
 
-**DoD**：物理节点部署可用，监控集成可用，集群运维操作可用
+**验收**：物理节点部署可用，监控集成可用
 
-### Phase 6: 稳定化（3 周）
+### M6: 稳定化
 
 - 端到端测试
 - 性能优化
-- 文档完善
-- 3 个试点服务正式上线
+- 试点服务上线
 
-**DoD**：端到端测试通过，API p95 < 200ms，3 个试点服务稳定运行
+**验收**：API p95 < 200ms，试点服务稳定运行
 
 > **注**：平台不负责接管现有老服务迁移。物理节点部署能力作为标准化方案提供，新服务按需选择部署方式。
-
-**总工期：19 周（约 5 个月）**，含 20% buffer
 
 ---
 
@@ -728,10 +762,11 @@ internal/
 
 | 风险 | 概率 | 影响 | 对策 |
 |------|------|------|------|
-| Argo CD Application 管理复杂度超预期 | 中 | 中 | 先支持标准 Helm Chart 模式，逐步扩展 |
+| Argo CD 管理 400+ Application 性能 | 中 | 中 | M2 阶段做性能验证；必要时调优 Argo CD 参数 |
 | 100+ 服务接入工作量 | 中 | 中 | 平台提供标准化接入流程，服务按需接入 |
-| 多集群网络连通性 | 中 | 高 | 当前单集群已规避；后续扩展时提前验证 |
-| 团队对 Argo CD/Workflows 不熟悉 | 中 | 中 | Phase 1 前做技术 spike，验证核心链路 |
-| 前端工作量被低估 | 中 | 中 | MVP 阶段前端只做核心功能，管理类操作可用 API |
-| Git 并发写入瓶颈 | 中 | 中 | 部署锁串行化 Git commit；评估 batch commit 优化 |
-| Webhook 通知投递失败 | 中 | 高 | 重试机制（3 次指数退避）；后期引入死信队列 |
+| Git 并发写入瓶颈 | 中 | 中 | 平台层 Git 写入队列串行化；评估按团队分仓库 |
+| Webhook 通知投递失败 | 中 | 高 | 重试（3 次指数退避）+ 通知合并策略 + 站内消息兜底 |
+| OIDC/SSO 对接延迟 | 高 | 高 | 跨团队协调，提前启动对接 |
+| 生产 K8s RBAC 权限审批 | 中 | 高 | 提前规划所需权限清单，与集群管理员协调 |
+| Git 仓库写权限/分支保护 | 中 | 中 | 提前打通平台 Git 账号权限和分支保护规则 |
+| 配置变更导致服务启动失败 | 中 | 高 | Helm values schema 校验 + Argo CD 健康检查失败自动回退 ConfigSnapshot |
