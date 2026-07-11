@@ -1,10 +1,11 @@
-# 服务管理平台 — 架构文档
+# Fleet — 架构文档
 
 | 字段 | 内容 |
 |------|------|
-| 文档版本 | v1.2 |
+| 文档版本 | v1.3 |
 | 创建日期 | 2026-07-10 |
-| 状态 | Draft — 待评审 |
+| 更新日期 | 2026-07-11（补充紧急快通道、API 聚合、安全加固） |
+| 状态 | Draft — 评审优化中 |
 
 ---
 
@@ -354,6 +355,7 @@ Deployment ──< Approval
 | Git 同步 | Git commit 同步期望状态后恢复 auto-sync |
 | Prod 审批 | 自动回滚不需要审批；手动回滚到指定历史版本需审批 |
 | 成功判定 | Argo CD Application 状态恢复 Healthy |
+| 紧急快通道 | 回滚和紧急扩容等时间敏感操作可绕过 GitOps 链路直接调用 K8s/Argo CD API，事后异步补 Git 同步。适用场景：回滚、紧急扩容（S-01）。不适用于配置变更和新部署 |
 
 ### 5.6 Git 写入策略
 
@@ -399,6 +401,18 @@ Deployment ──< Approval
 | 端到端测试 | M2 完成后构建 E2E 测试（部署全链路） |
 | Migration 测试 | 每次 schema 变更验证 up/down migration |
 | 前端测试 | 关键交互页面组件测试，E2E 覆盖核心流程 |
+
+### 5.11 安全加固
+
+| 项目 | 策略 |
+|------|------|
+| 审计日志脱敏 | 配置变更、凭证操作等写入审计日志前，自动检测 password/secret/token/key 等敏感字段并脱敏 |
+| Webhook SSRF 防护 | Webhook URL 限制为白名单域名或内网地址，禁止调用内网敏感地址（如 169.254.x.x metadata） |
+| 权限即时撤销 | 被禁用/降权的用户 token 通过 Redis 黑名单即时失效，不依赖 token 自然过期 |
+| Token 超时 | Access token 30min（生产操作需合理窗口）；Refresh token 8h（一个工作日） |
+| SSO 故障降级 | 不保留永久 admin 账号。配置备用 OIDC Provider，或通过 break-glass 流程（紧急工单 + DB 直接操作） |
+| K8s API 限流 | 使用 informer/watch 模式维护本地缓存，减少直接 API 调用。对 events 等高频资源设置 resync 间隔 |
+| 镜像来源约束 | prod 环境建议要求镜像来自可信 build pipeline（通过 label/tag 约定 + 准入校验） |
 
 ---
 
@@ -514,6 +528,14 @@ POST   /api/v1/webhooks                         # 创建 Webhook
 PUT    /api/v1/webhooks/:id                     # 更新 Webhook
 DELETE /api/v1/webhooks/:id                     # 删除 Webhook
 GET    /api/v1/notifications/logs                # 通知发送记录
+```
+
+### 6.15 诊断聚合 API
+
+```
+GET    /api/v1/services/:id/diagnosis           # 故障排查聚合视图（一次返回部署历史+Pod状态+最近Events+健康状态+配置变更）
+GET    /api/v1/services/:id/matrix               # 服务跨环境版本矩阵（避免 N+1 查询）
+GET    /api/v1/deployments/:id/progress          # 部署多阶段进度（提交→校验→配置→部署→健康检查→完成）
 ```
 
 ---
