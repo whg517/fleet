@@ -37,3 +37,4 @@ node_modules/
 
 # OpenClaw workspace files
 .sopenclaw/
+.claude/

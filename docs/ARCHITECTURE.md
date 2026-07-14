@@ -2,9 +2,9 @@
 
 | 字段 | 内容 |
 |------|------|
-| 文档版本 | v1.3 |
+| 文档版本 | v1.4 |
 | 创建日期 | 2026-07-10 |
-| 更新日期 | 2026-07-11（补充紧急快通道、API 聚合、安全加固） |
+| 更新日期 | 2026-07-12（技术选型补充：Echo/Ent/Viper/HeroUI/GitHub Actions/Helm/zap/TanStack Query+Zustand；移除云 KMS 和 Patroni） |
 | 状态 | Draft — 评审优化中 |
 
 ---
@@ -13,8 +13,11 @@
 
 | 层 | 选型 | 理由 |
 |----|------|------|
-| 前端 | Next.js SPA (React + TypeScript) | 团队选型，生态成熟 |
-| 后端 | Go (单体起步) | 并发模型适合编排操作，单二进制部署简单 |
+| 前端 | Next.js SPA (React + TypeScript + HeroUI) | 团队选型，HeroUI 基于 React Aria + Tailwind CSS |
+| 后端 | Go + Echo (单体起步) | 并发模型适合编排操作，单二进制部署简单，Echo 轻量高性能 |
+| ORM | Ent | Schema-as-Code，类型安全，图查询支持复杂关联 |
+| 配置 | Viper | 多配置源支持，生态成熟 |
+| 日志 | zap | 高性能零分配，生态成熟 |
 | 数据库 | PostgreSQL | 关系型数据，事务保证，审计日志 |
 | 缓存/队列 | Redis | 部署状态缓存、异步任务 |
 | 构建引擎 | Argo Workflows | K8s 原生 CI，与 GitOps 体系一致 |
@@ -22,6 +25,7 @@
 | 部署引擎 (物理节点) | Ansible | 幂等、模板化、K8s Job 隔离执行 |
 | 镜像仓库 | Harbor | 企业级，支持扫描和策略 |
 | 认证 | OIDC | 对接企业 SSO |
+| 凭证存储 | K8s Secret + AES-256-GCM | 应用层加密 + K8s etcd 加密 |
 | 监控 | Prometheus + AlertManager | 现有基础设施 |
 
 ---
@@ -79,7 +83,7 @@
 2. **GitOps 模式** — 部署的期望状态存储在 Git，Argo CD 负责调和
 3. **模板化封装** — 服务部署逻辑封装在 Helm Chart / Ansible Role 中，平台只管契约
 4. **一切操作可审计** — 所有写操作记录 who/when/what/result
-5. **敏感数据加密存储** — 通过云 KMS 信封加密（Envelope Encryption）保护主密钥，凭证数据经 AES-256-GCM 加密后存储在 PostgreSQL
+5. **敏感数据加密存储** — 凭证数据经 AES-256-GCM 加密后存储在 PostgreSQL，加密密钥通过 K8s Secret 注入，集群 etcd 加密提供静态保护
 6. **通知统一走 Webhook** — 所有通知（审批/部署/构建/告警）通过 Webhook 统一发送，后续可扩展
 
 ## 3.1 Argo CD Sync 策略
@@ -318,8 +322,8 @@ Deployment ──< Approval
 ┌──────────────────────────┐
 │  Go API (2 replicas)     │
 │  Next.js (静态托管)       │
-│  PostgreSQL (主从+Patroni)│
-│  Redis (3 Sentinel)      │
+│  PostgreSQL (单实例+备份) │
+│  Redis (Sentinel)        │
 │  Argo CD Server          │
 │  Argo Workflows          │
 └─────────────┬────────────┘
@@ -333,7 +337,7 @@ Deployment ──< Approval
 
 - 平台组件部署在独立管理命名空间，与业务 namespace 资源隔离
 - 单集群场景下 Argo CD 通过 namespace 管理多环境
-- PostgreSQL 采用主从复制 + 自动 failover（Patroni）
+- PostgreSQL 单实例部署，定期 pgBackRest 备份 + WAL 归档
 - Redis 采用 Sentinel 3 节点保证可用性
 
 ### 5.4 状态对账机制
@@ -380,10 +384,7 @@ Deployment ──< Approval
 ### 5.8 部署锁高可用
 
 部署锁主要依赖 Redis，增加 PostgreSQL 兜底：
-- **正常流程**：Redis SET NX + TTL 获取锁
-- **Redis 故障**：降级到 PG 行级锁（`SELECT ... FOR UPDATE SKIP LOCKED`）
-- **Sentinel failover 期间**：锁 TTL（10min）覆盖 failover 窗口（10-30s）
-- **锁超时**：TTL 到期自动释放，防止死锁
+- **Redis 故障**：锁 TTL（10min）覆盖短暂故障窗口；降级到 PG 行级锁（`SELECT ... FOR UPDATE SKIP LOCKED`）
 
 ### 5.9 物理节点部署的 GitOps 补全
 
@@ -707,7 +708,7 @@ internal/
 | Argo CD 不可用 | 无法发起新部署，**已部署服务不受影响** | Argo CD 多副本，CrashBackoff 自动恢复 |
 | Argo Workflows 不可用 | 无法构建新镜像 | 不影响已部署服务，恢复后重试 |
 | Harbor 不可用 | 无法推送/拉取镜像 | 多副本部署，定期备份 |
-| PostgreSQL 故障 | 平台不可用 | 主从复制 (streaming replication) + 定期备份 + PITR |
+| PostgreSQL 故障 | 平台不可用 | 单实例 + 定期备份 + WAL 归档，支持 PITR 恢复 |
 | Redis 故障 | 部署状态缓存失效，降级直查 | AOF 持久化 + Sentinel |
 | Git 仓库不可用 | 无法触发新部署/配置变更 | 不影响已部署服务，Argo CD 使用最后已知状态 |
 
@@ -725,7 +726,7 @@ internal/
 - PostgreSQL schema + migration
 - OIDC 认证（PKCE、Token 刷新、Logout）
 - RBAC 权限模型
-- KMS 信封加密
+- K8s Secret + 应用层 AES-256-GCM 加密
 - Next.js 前端项目初始化
 
 **验收**：OIDC 登录可用，RBAC 生效，凭证加密存储可用
