@@ -4,7 +4,7 @@
 |------|------|
 | 文档版本 | v1.4 |
 | 创建日期 | 2026-07-10 |
-| 更新日期 | 2026-07-12（技术选型补充：Echo/Ent/Viper/HeroUI/GitHub Actions/Helm/zap/TanStack Query+Zustand；移除云 KMS 和 Patroni，移除 DB Migration 管理（SYS-04）） |
+| 更新日期 | 2026-07-14（PG 高可用改为 CloudNativePG；移除 DB Migration 管理（SYS-04）） |
 | 状态 | Draft — 评审优化中 |
 
 ---
@@ -322,7 +322,7 @@ Deployment ──< Approval
 ┌──────────────────────────┐
 │  Go API (2 replicas)     │
 │  Next.js (静态托管)       │
-│  PostgreSQL (单实例+备份) │
+│  PostgreSQL (CloudNativePG) │
 │  Redis (Sentinel)        │
 │  Argo CD Server          │
 │  Argo Workflows          │
@@ -337,7 +337,8 @@ Deployment ──< Approval
 
 - 平台组件部署在独立管理命名空间，与业务 namespace 资源隔离
 - 单集群场景下 Argo CD 通过 namespace 管理多环境
-- PostgreSQL 单实例部署，定期 pgBackRest 备份 + WAL 归档
+- PostgreSQL 通过 CloudNativePG Operator 管理，主从复制 + 自动 failover
+- WAL 持续归档到对象存储（S3/MinIO），支持 PITR
 - Redis 采用 Sentinel 3 节点保证可用性
 
 ### 5.4 状态对账机制
@@ -709,7 +710,7 @@ internal/
 | Argo CD 不可用 | 无法发起新部署，**已部署服务不受影响** | Argo CD 多副本，CrashBackoff 自动恢复 |
 | Argo Workflows 不可用 | 无法构建新镜像 | 不影响已部署服务，恢复后重试 |
 | Harbor 不可用 | 无法推送/拉取镜像 | 多副本部署，定期备份 |
-| PostgreSQL 故障 | 平台不可用 | 单实例 + 定期备份 + WAL 归档，支持 PITR 恢复 |
+| PostgreSQL 故障 | 平台不可用 | CloudNativePG 自动 failover（RTO < 30s），WAL 归档支持 PITR |
 | Redis 故障 | 部署状态缓存失效，降级直查 | AOF 持久化 + Sentinel |
 | Git 仓库不可用 | 无法触发新部署/配置变更 | 不影响已部署服务，Argo CD 使用最后已知状态 |
 
