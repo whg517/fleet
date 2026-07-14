@@ -262,7 +262,15 @@ Deployment
   id, service_id, version_id, environment_id,
   status (pending_approval / queued / deploying / succeeded / failed),
   params jsonb, initiated_by, approved_by,
+  batch_id,                    # 关联批次（可选，单服务部署为 null）
   started_at, finished_at, created_at
+
+DeploymentBatch
+  id, environment_id, initiated_by,
+  status (pending_approval / deploying / partially_succeeded / succeeded / failed),
+  release_note text,             # 统一发布说明
+  total_count int, succeeded_count int, failed_count int,
+  created_at, finished_at
 
 ConfigSnapshot
   id, service_id, environment_id, values jsonb,
@@ -308,6 +316,7 @@ Service ──< ServiceVersion
 Service ──< Deployment >── Environment
 Service ──< ConfigSnapshot >── Environment
 Deployment ──< Approval
+DeploymentBatch ──< Deployment
 ```
 
 **Cluster 与 Environment 的关系**：
@@ -394,7 +403,25 @@ Deployment ──< Approval
 - 回滚时从 Git 历史读取上一次的 Role 版本和参数，用旧版 Role 执行
 - 审计链路：Git history（参数版本） + AuditLog（操作记录）双重追溯
 
-### 5.10 测试策略
+### 5.10 定时任务
+
+平台需要周期性执行的运维任务，通过 Go 后端的内置调度器实现（robfig/cron 或同类库），不依赖外部 CronJob。
+
+| 任务 | 周期 | 说明 |
+|------|------|------|
+| 版本漂移检测（D-13） | 每日 10:00 | 扫描所有服务版本分布，检测 dev→prod 版本差距过大的异常服务，通过 Webhook + 站内消息通知 |
+| 审批超时检查（AP-01） | 每 5min | 扫描 pending 审批，超过 24h 的自动 reject 并通知提交人 |
+| 凭证过期检查（SEC-01） | 每日 09:00 | 检查凭证到期时间，< 7 天的告警提醒运维 |
+| 服务冻结提醒（D-07） | 每日 09:00 | 冻结超过 N 天的服务提醒运维主管 |
+| 状态对账补偿（5.4） | 每 5min | 全量对账平台状态与 Argo CD 实际状态，弥补 watch 事件丢失 |
+| DEK 轮转（SEC-01） | 每 30 天 | 重新加密所有凭证数据 |
+
+实现要点：
+- 调度器随 Go 后端启动，多副本时通过 Redis 分布式锁保证只执行一次
+- 每次执行记录审计日志
+- 支持管理员手动触发
+
+### 5.11 测试策略
 
 | 层级 | 策略 |
 |------|--------|
@@ -405,7 +432,7 @@ Deployment ──< Approval
 
 > **注**：平台自身的 DB schema 变更通过 ent atlas migrate 管理，**不涉及业务服务的数据库 migration**。业务服务自身的 DB migration 由开发团队和 DBA 负责，平台不介入。
 
-### 5.11 安全加固
+### 5.12 安全加固
 
 | 项目 | 策略 |
 |------|------|

@@ -15,10 +15,37 @@ ADR-0006 确定了 PostgreSQL 作为存储。
 
 采用 **K8s Secret + 应用层 AES-256-GCM 加密** 方案：
 
-- 对接外部系统的凭证（kubeconfig、Harbor 密码、Git token）通过 K8s Secret 挂载或环境变量注入
-- 需要持久化到 PostgreSQL 的敏感字段，使用应用层 AES-256-GCM 加密
-- 加密密钥通过 K8s Secret 注入，不在代码或配置文件中硬编码
-- K8s 集群开启 etcd 加密（encryption at rest），Secret 数据落盘加密
+### 加密架构
+
+````
+敏感凭证（kubeconfig、Harbor 密码、Git token）
+  ↓ AES-256-GCM 加密
+PostgreSQL（存储密文）
+
+加密密钥（DEK）→ K8s Secret 注入 Pod
+  ↑
+K8s etcd encryption-at-rest（前置条件，保护 Secret 静态数据）
+````
+
+### 硬性前置条件
+
+> **K8s 集群必须启用 etcd encryption-at-rest。**
+
+如果 etcd 未加密，K8s Secret 中的 DEK 会被明文存储，攻击者获取 etcd 数据即可解密 PG 中的所有凭证。验证方式：
+
+```bash
+# 检查 kube-apiserver 是否启用 encryption-at-rest
+kubectl get --raw=/api/v1/secrets 2>/dev/null | head -1
+# 或检查 apiserver 启动参数
+grep encryption-provider /etc/kubernetes/manifests/kube-apiserver.yaml
+```
+
+### DEK 轮转
+
+- DEK 定期轮转（周期 30 天），通过更新 K8s Secret 触发
+- 轮转时读取所有加密凭证 → 用旧 DEK 解密 → 用新 DEK 加密 → 写回 PG
+- 轮转操作通过平台管理接口触发，记录审计日志
+- 旧 DEK 保留至所有凭证重新加密完成，之后从 Secret 中移除
 
 ## 后果
 
