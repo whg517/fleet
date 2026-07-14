@@ -216,7 +216,7 @@
 | SYS-01 | 系统配置管理 | P0 | 管理 OIDC 连接信息、Argo CD 地址、Harbor 地址、Git 仓库地址等系统级配置 |
 | SYS-02 | 平台健康自检 | P1 | 平台检测自身依赖组件可用性（DB/Redis/Argo CD/Harbor/Git）并展示状态 |
 | SYS-03 | 平台运营统计 | P2 | 平台使用数据统计：接入率、活跃用户、部署次数趋势、接入效率度量 |
-| SYS-04 | 数据库 Migration 管理 | P1 | 版本发布时展示待执行的 DB migration 列表、执行状态、回滚风险评估 |
+| SYS-04 | ~~数据库 Migration 管理~~ | ~~P1~~ | **已移除**：DB migration 由服务自身和 DBA 团队管理，平台不介入 |
 | SYS-05 | 平台降级模式 | P1 | 平台自身不可用时，提供标准降级操作路径：运维通过 argocd/kubectl CLI 操作的 SOP，平台恢复后自动全量对账 |
 
 ### 3.17 分析与报表

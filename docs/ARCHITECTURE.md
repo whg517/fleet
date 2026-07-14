@@ -400,8 +400,9 @@ Deployment ──< Approval
 | 单元测试 | Go 后端 domain/infra 层全面覆盖，目标覆盖率 > 80% |
 | 集成测试 | infra 层与 Argo CD/Harbor/Git 的 mock 集成测试 |
 | 端到端测试 | M2 完成后构建 E2E 测试（部署全链路） |
-| Migration 测试 | 每次 schema 变更验证 up/down migration |
 | 前端测试 | 关键交互页面组件测试，E2E 覆盖核心流程 |
+
+> **注**：平台自身的 DB schema 变更通过 ent atlas migrate 管理，**不涉及业务服务的数据库 migration**。业务服务自身的 DB migration 由开发团队和 DBA 负责，平台不介入。
 
 ### 5.11 安全加固
 
@@ -723,7 +724,7 @@ internal/
 ### M1: 基础设施与认证
 
 - Go 项目脚手架（路由、中间件、配置加载）
-- PostgreSQL schema + migration
+- PostgreSQL schema（ent atlas 管理平台自身表结构）
 - OIDC 认证（PKCE、Token 刷新、Logout）
 - RBAC 权限模型
 - K8s Secret + 应用层 AES-256-GCM 加密

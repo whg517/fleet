@@ -19,7 +19,7 @@ Go 后端需要选择数据库访问层方案。
 ### 正面
 - Schema-as-Code，类型安全，代码生成强类型 API
 - 图查询能力天然支持复杂关联关系（Service → Deployment → Environment）
-- Migration 自动生成，schema 变更有版本管理
+- Atlas 集成，平台自身 schema 变更有版本管理
 - 与 Go 生态集成好（GraphQL、OpenAPI 等代码生成扩展）
 - 查询性能好，支持 eager loading 避免 N+1
 

@@ -39,7 +39,7 @@
 [deploy] 实现 Argo CD Application 管理 + 状态同步
 [auth] 修复 OIDC token 刷新失败
 [config] 配置变更 dry-run 预览
-[docs] 补充 DB Migration 用户故事
+[docs] 补充批量发布用户故事
 ```
 
 ### Issue 内容要求
@@ -68,7 +68,7 @@
 ```
 feat/42-argocd-app-management
 fix/58-oidc-token-refresh
-docs/61-db-migration-stories
+docs/61-batch-release-stories
 refactor/55-deployment-lock
 ```
 
