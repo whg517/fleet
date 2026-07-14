@@ -4,7 +4,7 @@
 |------|------|
 | 文档版本 | v1.4 |
 | 创建日期 | 2026-07-10 |
-| 更新日期 | 2026-07-12（技术选型补充：Echo/Ent/Viper/HeroUI/GitHub Actions/Helm/zap/TanStack Query+Zustand；移除云 KMS 和 Patroni） |
+| 更新日期 | 2026-07-12（技术选型补充：Echo/Ent/Viper/HeroUI/GitHub Actions/Helm/zap/TanStack Query+Zustand；移除云 KMS 和 Patroni，移除 DB Migration 管理（SYS-04）） |
 | 状态 | Draft — 评审优化中 |
 
 ---

@@ -12,7 +12,6 @@
 | [0008](./0008-rbac-environment.md) | 权限模型采用 RBAC + 环境维度 | Accepted | 2026-07-10 |
 | [0009](./0009-kms-envelope-encryption.md) | 敏感凭证存储策略 | Accepted | 2026-07-10 (修订 07-12) |
 | [0010](./0010-rollback-strategy.md) | 回滚策略 | Accepted | 2026-07-10 |
-| [0011](./0011-postgres-patroni.md) | PostgreSQL 高可用（已移除） | ~~Accepted~~ Deprecated | 2026-07-10 (废弃 07-12) |
 | [0012](./0012-go-framework-echo.md) | Go 后端框架选型 Echo | Accepted | 2026-07-12 |
 | [0013](./0013-orm-ent.md) | 数据库 ORM 采用 Ent | Accepted | 2026-07-12 |
 | [0014](./0014-config-viper.md) | Go 配置管理采用 Viper | Accepted | 2026-07-12 |
