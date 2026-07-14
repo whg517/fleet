@@ -25,7 +25,7 @@
 | 部署引擎 (物理节点) | Ansible | 幂等、模板化、K8s Job 隔离执行 |
 | 镜像仓库 | Harbor | 企业级，支持扫描和策略 |
 | 认证 | OIDC | 对接企业 SSO |
-| 凭证存储 | K8s Secret + AES-256-GCM | 应用层加密 + K8s etcd 加密 |
+| 凭证存储 | K8s Secret + AES-256-GCM | 应用层加密；etcd 加密属集群职责，平台建议 |
 | 监控 | Prometheus + AlertManager | 现有基础设施 |
 
 ---
@@ -83,7 +83,7 @@
 2. **GitOps 模式** — 部署的期望状态存储在 Git，Argo CD 负责调和
 3. **模板化封装** — 服务部署逻辑封装在 Helm Chart / Ansible Role 中，平台只管契约
 4. **一切操作可审计** — 所有写操作记录 who/when/what/result
-5. **敏感数据加密存储** — 凭证数据经 AES-256-GCM 加密后存储在 PostgreSQL，加密密钥通过 K8s Secret 注入，集群 etcd 加密提供静态保护
+5. **敏感数据加密存储** — 凭证数据经 AES-256-GCM 加密后存储在 PostgreSQL，加密密钥通过 K8s Secret 注入。建议集群启用 etcd encryption-at-rest 提供纵深防御（由集群运维团队负责）
 6. **通知统一走 Webhook** — 所有通知（审批/部署/构建/告警）通过 Webhook 统一发送，后续可扩展
 
 ## 3.1 Argo CD Sync 策略

@@ -23,22 +23,20 @@ ADR-0006 确定了 PostgreSQL 作为存储。
 PostgreSQL（存储密文）
 
 加密密钥（DEK）→ K8s Secret 注入 Pod
-  ↑
-K8s etcd encryption-at-rest（前置条件，保护 Secret 静态数据）
 ````
 
-### 硬性前置条件
+### 平台安全边界
 
-> **K8s 集群必须启用 etcd encryption-at-rest。**
+平台自身能控制的加密层：
+- **应用层 AES-256-GCM 加密**：凭证在写入 PG 前加密，即使数据库泄露凭证也不可读
+- **DEK 轮转**：周期 30 天，通过更新 K8s Secret 触发，重新加密所有凭证
 
-如果 etcd 未加密，K8s Secret 中的 DEK 会被明文存储，攻击者获取 etcd 数据即可解密 PG 中的所有凭证。验证方式：
+超出平台管控范围（由集群运维团队负责）：
+- K8s etcd encryption-at-rest
+- K8s RBAC 和 Secret 访问控制
+- 节点安全（磁盘加密、访问控制）
 
-```bash
-# 检查 kube-apiserver 是否启用 encryption-at-rest
-kubectl get --raw=/api/v1/secrets 2>/dev/null | head -1
-# 或检查 apiserver 启动参数
-grep encryption-provider /etc/kubernetes/manifests/kube-apiserver.yaml
-```
+> **安全建议**：建议集群运维团队启用 etcd encryption-at-rest 和严格的 Secret RBAC，以提供纵深防御。但这是集群层面的决策，不作为平台的前置条件。
 
 ### DEK 轮转
 
@@ -52,16 +50,16 @@ grep encryption-provider /etc/kubernetes/manifests/kube-apiserver.yaml
 ### 正面
 - 不引入外部 KMS 依赖，运维简单
 - K8s Secret 是集群原生机制，团队熟悉
-- etcd 加密提供静态数据保护
 - 应用层加密保证即使数据库泄露凭证也不可读
 
 ### 负面
-- 加密密钥存在 K8s Secret 中，集群管理员可访问
+- 加密密钥存在 K8s Secret 中，集群管理员理论上可访问
 - 密钥轮转需要重新部署应用
 - 安全性不如独立 KMS，依赖 K8s 集群安全边界
 
 ### 中性
 - 适用前提：K8s 集群本身是可信环境（RBAC 严格管控）
+- etcd encryption-at-rest 属于集群安全范畴，平台提供建议但不作为前置条件
 - 后续如安全要求提升，可引入外部 KMS
 
 ## 备选方案

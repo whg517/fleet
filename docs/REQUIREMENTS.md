@@ -195,7 +195,7 @@
 
 | ID | 功能项 | 优先级 | 描述 |
 |----|--------|--------|------|
-| SEC-01 | 凭证安全存储 | P0 | kubeconfig、Harbor 密码、Git token 等通过应用层 AES-256-GCM 加密存储于 PostgreSQL，加密密钥通过 K8s Secret 注入（前置条件：etcd encryption-at-rest 已启用）。不保留永久 admin 后门账号，SSO 故障通过 break-glass 流程处理 |
+| SEC-01 | 凭证安全存储 | P0 | kubeconfig、Harbor 密码、Git token 等通过应用层 AES-256-GCM 加密存储于 PostgreSQL，加密密钥通过 K8s Secret 注入。建议集群启用 etcd encryption-at-rest 提供纵深防御。不保留永久 admin 后门账号，SSO 故障通过 break-glass 流程处理 |
 | SEC-02 | 凭证使用审计 | P0 | 凭证访问记录 |
 | SEC-03 | Webhook URL 白名单 | P1 | Webhook 出站调用限制为白名单域名或内网地址，防止 SSRF 攻击 |
 | SEC-04 | 审计日志脱敏 | P0 | 配置变更、凭证操作等写入审计日志前，自动检测并脱敏敏感字段 |
