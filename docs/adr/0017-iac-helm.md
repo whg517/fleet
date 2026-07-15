@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted
+Accepted（v2 — 平台托管模式，2026-07-15 更新）
 
 ## 背景
 
@@ -15,7 +15,7 @@ Fleet 平台自身的 K8s 资源需要声明式管理。
 
 - Fleet 后端、前端、PostgreSQL、Redis 等组件通过 Helm Chart 打包
 - 不同环境（dev/test/pre/prod）通过 values override 区分
-- 与 Argo CD GitOps 体系天然集成
+- Fleet 自身的 Helm Chart 发布为 OCI 制品，通过 Argo CD 部署
 
 ## 后果
 
@@ -30,7 +30,7 @@ Fleet 平台自身的 K8s 资源需要声明式管理。
 - 不如 Kustomize 简洁（但功能更强）
 
 ### 中性
-- 平台自身的 Helm Chart 存放在 GitOps 仓库的 `helm-charts/fleet/` 目录
+- Fleet 自身的 Helm Chart 作为 OCI 制品存储在 Harbor 中
 
 ## 备选方案
 
