@@ -2,9 +2,9 @@
 
 | 字段 | 内容 |
 |------|------|
-| 文档版本 | v1.5 |
+| 文档版本 | v1.6 |
 | 创建日期 | 2026-07-10 |
-| 更新日期 | 2026-07-15（移除 GitOps 模式，改为平台完全托管：模板管理 OCI 化、配置存数据库、Argo CD 由平台直接管理；新增 Template/TemplateVersion 数据模型） |
+| 更新日期 | 2026-07-15（新增 Organization 层，数据模型预留 org_id 支持跨部门接入；Template 加 visibility 字段；Cluster/Environment/Registry/WebhookConfig 关联 org_id） |
 | 状态 | Draft — 评审优化中 |
 
 ---
@@ -230,32 +230,38 @@ Git Push → Webhook → 平台触发 Argo Workflow
 ### 5.1 核心实体
 
 ```
+Organization
+  id, name, slug, description, status (active / disabled), created_at
+  -- 组织/部门层级，初期只有一个默认 org，后续跨部门接入时新建
+
 User
-  id, name, email, oidc_subject, status, created_at
+  id, org_id, name, email, oidc_subject, status, created_at
+  -- 用户归属组织，OIDC 首次登录自动关联默认 org
 
 Role
   id, name (admin / operator / developer / viewer / auditor), description
 
 # Casbin 策略表（由 Casbin PG Adapter 管理）
-# p: 策略 (sub, dom, obj, act)
-# g: 角色分配 (user, role, domain)
-# g2: 团队归属 (user, team)
+# p: 策略 (sub, dom, obj, act)          — dom 对应 org_id
+# g: 角色分配 (user, role, domain)       — domain 对应 org_id
+# g2: 团队归属 (user, team)              — team 在 org 范围内
 CasbinRule
   id, ptype, v0, v1, v2, v3, v4, v5
 
 ApproverConfig
-  id, service_id, team_id, environment_id,
+  id, org_id, service_id, team_id, environment_id,
   approver_user_id, created_at, updated_at
 
 FreezeRecord
-  id, scope (service / environment / global),
+  id, org_id, scope (service / environment / global),
   service_id, environment_id,
   reason text, frozen_by, created_at, expires_at
 
 Template
-  id, name, type (build / deploy_k8s / deploy_vm),
+  id, org_id, name, type (build / deploy_k8s / deploy_vm),
   source (platform / external_oci),
   description, owner_team,
+  visibility (org / global),         -- 组织内可见 or 全局共享
   status (draft / published / archived),
   created_at, updated_at
 
@@ -269,11 +275,12 @@ TemplateVersion
   status (published / archived)
 
 Cluster
-  id, name, api_server, kubeconfig_encrypted, environment,
+  id, org_id, name, api_server, kubeconfig_encrypted,
   labels jsonb, status, created_at
+  -- 集群归属组织，不同部门可注册各自的集群
 
 Service
-  id, name, description, owner_team, deploy_type (k8s / vm),
+  id, org_id, name, description, owner_team, deploy_type (k8s / vm),
   deploy_template_version_id,   # 当前绑定的部署模板版本
   build_template_version_id,    # 当前绑定的构建模板版本（可选）
   registry_id,                  # 关联镜像仓库
@@ -284,9 +291,10 @@ ServiceVersion
   built_at, changelog, created_at
 
 Environment
-  id, name (dev / test / pre / prod), cluster_id,
+  id, org_id, name (dev / test / pre / prod), cluster_id,
   namespace_pattern, approval_required bool, approver_role,
   config_overrides jsonb, created_at
+  -- 环境归属组织 + 关联集群。不同部门可有各自的 dev/test/prod
 
 PromotionRule
   id, from_environment_id, to_environment_id,
@@ -321,12 +329,14 @@ AuditLog
   detail jsonb, ip, created_at
 
 Registry
-  id, name, type (harbor), url, credentials_ref, created_at
+  id, org_id, name, type (harbor), url, credentials_ref, created_at
+  -- 镜像仓库归属组织，不同部门可对接各自的 Harbor 项目/实例
 
 WebhookConfig
-  id, name, url, secret, events[] (approval/deployment/build/alert),
+  id, org_id, name, url, secret, events[] (approval/deployment/build/alert),
   is_active, retry_count int default 3, retry_interval_sec int default 30,
   created_at
+  -- Webhook 配置归属组织
 
 NotificationLog
   id, webhook_config_id, event_type, payload jsonb,
@@ -339,22 +349,29 @@ AuditLog
   -- 独立表 INSERT-only，hash chain 防篡改，应用账号无 UPDATE/DELETE 权限
 ```
 
+> **org_id 设计说明**：初期所有数据归默认 org（`org_id = 1`）。数据查询层统一加 `org_id` 过滤，为后续跨部门接入预留。Casbin 的 `dom` 字段对齐 `org_id`，天然实现组织级数据隔离。Template 额外支持 `visibility = global` 实现跨组织共享。
+
 ### 5.2 ER 关系
 
 ```
+Organization ──< User
+Organization ──< Team (Casbin g2)
+Organization ──< Template ──< TemplateVersion
+Organization ──< Cluster ──< Environment
+Organization ──< Registry
+Organization ──< WebhookConfig
+
 User ──< Deployment
 User ──< AuditLog
 User ──< Approval
-User ──g──> Role (Casbin 角色分配)
-User ──g2──> Team (Casbin 团队归属)
+User ──g──> Role (Casbin 角色分配, domain=org_id)
+User ──g2──> Team (Casbin 团队归属, org 范围内)
 ApproverConfig ──> Service
 ApproverConfig ──> Environment
 
-Template ──< TemplateVersion
 Service ──> TemplateVersion (deploy)
 Service ──> TemplateVersion (build, optional)
-
-Cluster ──< Environment     (一个环境属于一个集群；一个集群可含多个环境命名空间)
+Service ──> Registry
 Service ──< ServiceVersion
 Service ──< Deployment >── Environment
 Service ──< ConfigSnapshot >── Environment
@@ -362,10 +379,12 @@ Deployment ──< Approval
 DeploymentBatch ──< Deployment
 ```
 
-**Cluster 与 Environment 的关系**：
-- 当前阶段单集群，通过 namespace 隔离多环境（dev/test/pre/prod）
-- 一个 Cluster 承载多个 Environment
-- 后续扩展多集群时，可定义多个 Cluster 关联不同 Environment
+**Organization 模型说明**：
+- 当前阶段单组织（默认 org_id=1），通过 namespace 隔离多环境（dev/test/pre/prod）
+- Organization 是轻量抽象层，初期不启用多组织，但数据层预留 org_id 字段
+- 后续跨部门接入时，各部门创建各自的 Organization，数据天然隔离
+- Casbin 的 domain 字段对齐 org_id，权限策略按组织范围生效
+- Template 支持 visibility=global 实现跨组织共享（如通用构建模板）
 
 ### 5.3 平台部署拓扑
 
@@ -641,6 +660,18 @@ POST   /api/v1/services/:id/freeze                 # 冻结单个服务（freeze
 POST   /api/v1/environments/:id/freeze             # 冻结环境（freeze_global 权限）
 POST   /api/v1/freeze/global                       # 全局冻结（freeze_global 权限）
 ```
+
+### 6.17 组织管理
+
+```
+GET    /api/v1/orgs                                # 组织列表（admin only）
+POST   /api/v1/orgs                                # 创建组织（admin only）
+GET    /api/v1/orgs/:id                             # 组织详情
+PUT    /api/v1/orgs/:id                             # 更新组织信息
+GET    /api/v1/orgs/:id/summary                     # 组织概览（服务数/用户数/部署统计）
+```
+
+> **注**：初期默认 org 自动创建，普通用户不感知组织切换。admin 可管理多组织。数据查询层统一加 org_id 过滤，API 层自动注入当前用户的 org_id。
 
 ---
 
