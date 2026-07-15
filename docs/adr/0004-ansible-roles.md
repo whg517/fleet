@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted
+Accepted（v2 — 模板 OCI 化，2026-07-15 更新）
 
 ## 背景
 
@@ -18,7 +18,7 @@ Accepted
 
 物理节点服务通过 Ansible Role 封装部署逻辑。
 每个服务一个 Role，包含 manifest.yaml（契约）、defaults（默认参数）、tasks（部署逻辑）、templates（配置模板）。
-平台通过 K8s Job 触发 Ansible Runner 执行，SSH 密钥通过 Secret 挂载，不落平台后端磁盘。
+Ansible Role 作为部署模板以 OCI 制品形式发布和版本管理，平台通过 K8s Job 触发 Ansible Runner 执行（从 OCI 拉取 Role），SSH 密钥通过 Secret 挂载，不落平台后端磁盘。
 
 ## 后果
 
@@ -29,8 +29,7 @@ Accepted
 - 平台统一入口，底层按 deploy_type 分流（K8s → Argo CD，物理节点 → Ansible）
 
 ### 负面
-- 需要维护两套模板体系（Helm + Ansible）
-- 物理节点部署不走 GitOps，审计依赖平台记录
+- 需要维护两套模板体系（Helm + Ansible），但统一为 OCI 制品管理
 
 ### 中性
 - 物理节点服务占比小，维护成本可控

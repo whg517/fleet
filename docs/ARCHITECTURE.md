@@ -2,9 +2,9 @@
 
 | 字段 | 内容 |
 |------|------|
-| 文档版本 | v1.4 |
+| 文档版本 | v1.5 |
 | 创建日期 | 2026-07-10 |
-| 更新日期 | 2026-07-14（PG 高可用改为 CloudNativePG；移除 DB Migration 管理（SYS-04）；权限模型改为 Casbin RBAC with domain） |
+| 更新日期 | 2026-07-15（移除 GitOps 模式，改为平台完全托管：模板管理 OCI 化、配置存数据库、Argo CD 由平台直接管理；新增 Template/TemplateVersion 数据模型） |
 | 状态 | Draft — 评审优化中 |
 
 ---
@@ -20,8 +20,8 @@
 | 日志 | zap | 高性能零分配，生态成熟 |
 | 数据库 | PostgreSQL | 关系型数据，事务保证，审计日志 |
 | 缓存/队列 | Redis | 部署状态缓存、异步任务 |
-| 构建引擎 | Argo Workflows | K8s 原生 CI，与 GitOps 体系一致 |
-| 部署引擎 (K8s) | Argo CD | GitOps 模式，声明式，有 diff/sync/rollback |
+| 构建引擎 | Argo Workflows | K8s 原生 CI，WorkflowTemplate 由平台模板管理 |
+| 部署引擎 (K8s) | Argo CD | 声明式部署，平台通过 API 直接管理 Application CRD |
 | 部署引擎 (物理节点) | Ansible | 幂等、模板化、K8s Job 隔离执行 |
 | 镜像仓库 | Harbor | 企业级，支持扫描和策略 |
 | 认证 | OIDC | 对接企业 SSO |
@@ -81,20 +81,21 @@
 ## 3. 核心设计原则
 
 1. **平台是控制面，不是数据面** — 平台挂了不影响线上服务运行
-2. **GitOps 模式** — 部署的期望状态存储在 Git，Argo CD 负责调和
-3. **模板化封装** — 服务部署逻辑封装在 Helm Chart / Ansible Role 中，平台只管契约
+2. **平台托管模式** — 平台数据库是唯一 source of truth，模板、配置、部署状态全部存数据库，不依赖 Git 作为运行时链路。系统配置备份可同步到 Git/S3，属 DR 功能，不在核心流程内
+3. **模板 OCI 化** — 构建模板、K8s 部署模板（Helm Chart）、物理节点部署模板（Ansible Role）统一以 OCI 制品形式发布和版本管理。模板可在平台创建发布，也可注册外部 OCI 制品
 4. **一切操作可审计** — 所有写操作记录 who/when/what/result
 5. **敏感数据加密存储** — 凭证数据经 AES-256-GCM 加密后存储在 PostgreSQL，加密密钥通过 K8s Secret 注入。建议集群启用 etcd encryption-at-rest 提供纵深防御（由集群运维团队负责）
 6. **通知统一走 Webhook** — 所有通知（审批/部署/构建/告警）通过 Webhook 统一发送，后续可扩展
 
 ## 3.1 Argo CD Sync 策略
 
+平台通过 Argo CD API 直接管理 Application CRD（创建、更新 targetRevision/values、触发 sync），不依赖 Git 仓库。
+
 | 场景 | Sync 策略 | 说明 |
 |------|----------|------|
-| dev / test | auto-sync = true | Git commit 后自动部署，开发快速反馈 |
+| dev / test | auto-sync = true | 平台更新 Application 后自动部署，开发快速反馈 |
 | pre / prod | auto-sync = false (manual sync) | 平台触发 sync，确保审批流程不被绕过 |
 
-平台通过 Argo CD API 触发 manual sync，不依赖 Argo CD 的自动轮询。
 部署后通过 Argo CD API 轮询 Application 状态判断 Healthy / Degraded。
 
 ---
@@ -111,7 +112,7 @@ Git Push → Webhook → 平台触发 Argo Workflow
 ```
 
 平台职责：触发构建、接收结果、管理版本。
-构建逻辑封装在 Argo WorkflowTemplate 中，平台参数化触发。
+构建逻辑封装在构建模板（Argo WorkflowTemplate OCI 制品）中，平台参数化触发。
 
 ### 4.2 K8s 部署流程
 
@@ -120,8 +121,8 @@ Git Push → Webhook → 平台触发 Argo Workflow
   → 权限校验
   → [pre/prod] 审批流程
   → 部署锁校验（同一服务+环境不能并发部署）
-  → 平台 Git commit 更新 environments/<env>/<service>.yaml
-  → 更新 Argo CD Application（targetRevision / values）
+  → 平台更新数据库中的环境配置（image tag + values override）
+  → 平台通过 Argo CD API 更新 Application（targetRevision / values）
   → 平台触发 Argo CD Sync（dev/test auto-sync，pre/prod manual sync）
   → 轮询 Argo CD 状态 (Healthy / Progressing / Degraded)
   → 成功 → 记录 + 审计 + 通知
@@ -142,7 +143,8 @@ Git Push → Webhook → 平台触发 Argo Workflow
   → 权限校验
   → [prod] 审批流程
   → 部署锁校验
-  → 平台创建 K8s Job（Ansible Runner 镜像）
+  → 平台从 OCI 制品仓库拉取 Ansible Role（指定版本）
+  → 平台创建 K8s Job（Ansible Runner 镜像 + Role 制品）
   → Job Pod 从 Secret 挂载 SSH 密钥
   → 执行 ansible-playbook -i <动态inventory> -e @<参数>
   → 平台轮询 Job 状态
@@ -154,12 +156,12 @@ Git Push → Webhook → 平台触发 Argo Workflow
 
 | 维度 | 方案 |
 |------|------|
-| 部署模板 | Ansible Role，含 manifest.yaml 契约（defaults=参数接口，tasks=部署逻辑） |
+| 部署模板 | Ansible Role OCI 制品，含 manifest.yaml 契约（defaults=参数接口，tasks=部署逻辑） |
 | 执行环境 | K8s Job Pod，每次部署独立执行，与平台后端隔离 |
 | SSH 密钥 | K8s Secret 挂载到 Job Pod，不落平台后端磁盘 |
 | Inventory | 平台管理主机组（按环境分组），动态生成 inventory 文件 |
-| 版本管理 | 平台记录每次部署的 Role 版本 + 参数快照 |
-| 回滚 | 用上一次成功部署的参数重新执行 Ansible Role |
+| 版本管理 | 平台数据库记录每次部署的 Role 版本 + 参数快照 |
+| 回滚 | 用上一次成功部署的参数 + 对应版本 Role 重新执行 |
 | 幂等性 | Ansible 模块天然幂等，重复执行结果一致 |
 | 日志 | Job Pod stdout 实时采集，可在平台查看 |
 
@@ -168,12 +170,13 @@ Git Push → Webhook → 平台触发 Argo Workflow
 ```
 修改环境级 Helm values
   → [pre/prod] 审批
-  → Git commit 到 environments/<env>/<service>.yaml
-  → Argo CD 检测 Git 变更 → 自动 Sync
+  → 平台更新数据库中的 values override
+  → 平台通过 Argo CD API 更新 Application values
+  → 触发 Argo CD Sync（dev/test auto-sync，pre/prod manual）
   → 配置生效
 ```
 
-配置变更即 Git commit，天然有版本历史和审计。
+每次配置变更生成 ConfigSnapshot 存入数据库，保留完整版本历史和审计链路。
 
 ### 4.5 发布审批流程
 
@@ -194,10 +197,11 @@ Git Push → Webhook → 平台触发 Argo Workflow
 ```
 运维/开发发起服务接入
   → 创建 Service 记录（名称、deploy_type、owner_team）
-  → 关联 Helm Chart（chart_name、chart_repo）或 Ansible Role
+  → 从模板目录选择部署模板（K8s 部署模板 / 物理节点部署模板）+ 指定版本
+  → 关联构建模板（可选）
   → 关联 Harbor 项目（镜像仓库路径）
-  → 初始化环境配置（为每个环境生成默认 values override）
-  → 创建 Argo CD Application（每个环境一个）
+  → 初始化环境配置（为每个环境生成默认 values override，存数据库）
+  → 创建 Argo CD Application（平台通过 API 创建，每个环境一个）
   → 服务状态标记为 active
   → 记录审计
 ```
@@ -248,13 +252,32 @@ FreezeRecord
   service_id, environment_id,
   reason text, frozen_by, created_at, expires_at
 
+Template
+  id, name, type (build / deploy_k8s / deploy_vm),
+  source (platform / external_oci),
+  description, owner_team,
+  status (draft / published / archived),
+  created_at, updated_at
+
+TemplateVersion
+  id, template_id,
+  version (semver),
+  content_ref,            # OCI 制品地址（平台创建→发布后生成；外部注册→直接引用）
+  content_hash,           # 内容摘要（SHA256）
+  changelog,
+  published_by, published_at,
+  status (published / archived)
+
 Cluster
   id, name, api_server, kubeconfig_encrypted, environment,
   labels jsonb, status, created_at
 
 Service
   id, name, description, owner_team, deploy_type (k8s / vm),
-  chart_name, chart_repo, status (active / frozen / offline), created_at
+  deploy_template_version_id,   # 当前绑定的部署模板版本
+  build_template_version_id,    # 当前绑定的构建模板版本（可选）
+  registry_id,                  # 关联镜像仓库
+  status (active / frozen / offline), created_at
 
 ServiceVersion
   id, service_id, version, image_ref, git_commit,
@@ -327,6 +350,10 @@ User ──g2──> Team (Casbin 团队归属)
 ApproverConfig ──> Service
 ApproverConfig ──> Environment
 
+Template ──< TemplateVersion
+Service ──> TemplateVersion (deploy)
+Service ──> TemplateVersion (build, optional)
+
 Cluster ──< Environment     (一个环境属于一个集群；一个集群可含多个环境命名空间)
 Service ──< ServiceVersion
 Service ──< Deployment >── Environment
@@ -380,22 +407,12 @@ DeploymentBatch ──< Deployment
 |------|--------|
 | 触发条件 | Argo CD Application 状态为 Degraded 持续超过 5 分钟 |
 | 触发方式 | 手动触发（默认） / 自动触发（可选，按服务配置） |
-| 回滚操作 | `argocd app rollback`（回到上一个 healthy sync），不改 Git |
-| auto-sync 暂停 | 回滚后临时关闭 Argo CD auto-sync，防止 Git 中的新版本覆盖回滚 |
-| Git 同步 | Git commit 同步期望状态后恢复 auto-sync |
+| 回滚操作 | `argocd app rollback`（回到上一个 healthy sync） |
 | Prod 审批 | 自动回滚不需要审批；手动回滚到指定历史版本需审批 |
 | 成功判定 | Argo CD Application 状态恢复 Healthy |
-| 紧急快通道 | 回滚和紧急扩容等时间敏感操作可绕过 GitOps 链路直接调用 K8s/Argo CD API，事后异步补 Git 同步。适用场景：回滚、紧急扩容（S-01）。不适用于配置变更和新部署 |
+| 紧急快通道 | 回滚和紧急扩容等时间敏感操作可直接调用 K8s/Argo CD API，适用场景：回滚、紧急扩容（S-01）。不适用于配置变更和新部署 |
 
-### 5.6 Git 写入策略
-
-100+ 服务并发部署时，Git commit 可能产生 push 冲突。策略：
-- 平台后端维护 **Git 写入队列**，所有 Git commit 操作串行化执行
-- 单次 commit 可 batch 多个文件变更（如同时更新多个环境的 values）
-- push 冲突时自动 pull-rebase-push 重试（最多 3 次）
-- 重试失败时部署标记为 failed，通知运维
-
-### 5.7 配置变更安全防护
+### 5.6 配置变更安全防护
 
 配置变更可能导致服务启动失败。防护策略：
 
@@ -404,22 +421,22 @@ DeploymentBatch ──< Deployment
 | 提交前 | Helm values schema 校验 + dry-run 渲染预览 |
 | 部署中 | Argo CD sync 后等待健康检查（readiness probe） |
 | 失败检测 | Argo CD Application 状态为 Degraded 超过 3min |
-| 自动回退 | 回退到上一个 ConfigSnapshot（Git revert + 重新 sync） |
+| 自动回退 | 回退到上一个 ConfigSnapshot（平台更新 Application values + 重新 sync） |
 | 通知 | 配置回退时 Webhook 通知发起人和运维 |
 
-### 5.8 部署锁高可用
+### 5.7 部署锁高可用
 
 部署锁主要依赖 Redis，增加 PostgreSQL 兜底：
 - **Redis 故障**：锁 TTL（10min）覆盖短暂故障窗口；降级到 PG 行级锁（`SELECT ... FOR UPDATE SKIP LOCKED`）
 
-### 5.9 物理节点部署的 GitOps 补全
+### 5.8 物理节点部署的审计链路
 
-物理节点部署虽不走 Argo CD，但通过 Git 补全审计链路：
-- 每次部署将 **参数快照 + Role 版本（Git tag/commit hash）** commit 到 `ansible/deployments/` 目录
-- 回滚时从 Git 历史读取上一次的 Role 版本和参数，用旧版 Role 执行
-- 审计链路：Git history（参数版本） + AuditLog（操作记录）双重追溯
+物理节点部署不走 Argo CD，审计链路通过平台数据库完成：
+- 每次部署将 **参数快照 + Ansible Role 版本（TemplateVersion ID）** 存入 Deployment 记录
+- 回滚时从数据库读取上一次成功部署的 Role 版本和参数，用对应版本 Role 执行
+- 审计链路：Deployment 记录（参数版本） + AuditLog（操作记录）双重追溯
 
-### 5.10 定时任务
+### 5.9 定时任务
 
 平台需要周期性执行的运维任务，通过 Go 后端的内置调度器实现（robfig/cron 或同类库），不依赖外部 CronJob。
 
@@ -437,18 +454,18 @@ DeploymentBatch ──< Deployment
 - 每次执行记录审计日志
 - 支持管理员手动触发
 
-### 5.11 测试策略
+### 5.10 测试策略
 
 | 层级 | 策略 |
 |------|--------|
 | 单元测试 | Go 后端 domain/infra 层全面覆盖，目标覆盖率 > 80% |
-| 集成测试 | infra 层与 Argo CD/Harbor/Git 的 mock 集成测试 |
+| 集成测试 | infra 层与 Argo CD/Harbor/OCI 的 mock 集成测试 |
 | 端到端测试 | M2 完成后构建 E2E 测试（部署全链路） |
 | 前端测试 | 关键交互页面组件测试，E2E 覆盖核心流程 |
 
 > **注**：平台自身的 DB schema 变更通过 ent atlas migrate 管理，**不涉及业务服务的数据库 migration**。业务服务自身的 DB migration 由开发团队和 DBA 负责，平台不介入。
 
-### 5.12 安全加固
+### 5.11 安全加固
 
 | 项目 | 策略 |
 |------|------|
@@ -523,6 +540,22 @@ GET    /api/v1/clusters/:id/health              # 集群健康
 ```
 GET    /api/v1/registries/:id/images            # 镜像列表
 GET    /api/v1/registries/:id/scans             # 镜像扫描结果
+```
+
+### 6.7A 模板管理
+
+```
+GET    /api/v1/templates                        # 模板列表（支持 type/source 过滤）
+POST   /api/v1/templates                        # 创建模板（平台创建）
+POST   /api/v1/templates/register               # 注册外部 OCI 制品
+GET    /api/v1/templates/:id                     # 模板详情（含版本列表）
+PUT    /api/v1/templates/:id                     # 更新模板信息
+DELETE /api/v1/templates/:id                    # 归档模板
+
+POST   /api/v1/templates/:id/publish             # 发布新版本（平台创建→推 OCI）
+GET    /api/v1/templates/:id/versions            # 版本列表
+GET    /api/v1/templates/:id/versions/:ver       # 版本详情
+POST   /api/v1/templates/:id/versions/:ver/archive  # 归档版本
 ```
 
 ### 6.8 配置
@@ -641,44 +674,61 @@ GET /api/v1/services?team=order&status=active&env=prod&sort=-created_at
 
 ---
 
-## 7. GitOps 仓库结构
+## 7. 模板管理与 OCI 制品体系
+
+平台采用 OCI 制品作为所有模板的统一格式，模板生命周期完全由平台管理。
+
+### 7.1 模板类型
+
+| 模板类型 | 用途 | OCI 制品格式 |
+|---------|------|-------------|
+| 构建模板 (build) | Argo WorkflowTemplate，定义构建流程 | OCI Artifact |
+| K8s 部署模板 (deploy_k8s) | Helm Chart，定义 K8s 部署逻辑 | OCI Helm Chart (oci://) |
+| 物理节点部署模板 (deploy_vm) | Ansible Role，定义物理机部署逻辑 | OCI Artifact |
+
+### 7.2 模板来源
+
+| 来源 | 说明 |
+|------|------|
+| 平台创建 (platform) | 在平台 UI 中编辑模板内容，发布时推送到 OCI 制品仓库（Harbor） |
+| 外部注册 (external_oci) | 已有 OCI 制品（团队自建或第三方），通过 OCI 引用注册到平台模板目录 |
+
+### 7.3 模板生命周期
 
 ```
-platform-repo/
-├── helm-charts/              # 所有服务的 Helm Chart
-│   ├── service-a/
-│   │   ├── Chart.yaml
-│   │   ├── values.yaml       # 基础 values
-│   │   └── templates/
-│   └── service-b/
-│
-├── environments/             # 环境覆盖配置
-│   ├── dev/
-│   │   ├── service-a.yaml    # dev 环境的 values override
-│   │   └── service-b.yaml
-│   ├── test/
-│   ├── pre/
-│   └── prod/
-│
-├── argocd-apps/              # Argo CD Application 定义
-│   ├── dev/
-│   │   ├── service-a.yaml
-│   │   └── service-b.yaml
-│   ├── pre/
-│   └── prod/
-│
-└── ansible/                  # 物理机部署
-    ├── inventory/
-    │   ├── dev.ini
-    │   └── prod.ini
-    ├── roles/
-    │   └── service-xxx/      # Ansible Role 模板
-    └── playbooks/
+平台创建模板:
+  draft → 编辑内容 → publish → 推送到 Harbor OCI → published
+
+外部注册模板:
+  register → 提供 OCI 引用 + 元数据 → published
+
+版本管理:
+  每个 publish 生成不可变版本（semver）
+  旧版本可归档（archived），不再可选使用
+  已使用的服务不受归档影响（引用具体版本）
 ```
 
-平台对 Git 的操作：
-- **读**：读 Chart/values 结构做参数校验
-- **写**：部署时写 Application CRD 或更新 values override
+### 7.4 服务与模板的关系
+
+```
+Service
+  ├── deploy_template_version_id → TemplateVersion（部署模板，必选）
+  └── build_template_version_id  → TemplateVersion（构建模板，可选）
+
+服务接入时从已发布的模板版本中选择并绑定。
+后续可切换模板版本（如升级 Chart 版本），平台记录变更历史。
+```
+
+### 7.5 运行时数据存储
+
+| 数据 | 存储 | 说明 |
+|------|------|------|
+| 模板定义与版本 | 平台数据库 | Template / TemplateVersion |
+| 环境 values override | 平台数据库 | ConfigSnapshot，每次变更生成快照 |
+| Argo CD Application | 平台数据库（期望状态） → K8s CRD（实际资源） | 平台通过 API 双向同步 |
+| 部署参数与审计 | 平台数据库 | Deployment + AuditLog |
+
+平台数据库是唯一 source of truth。系统配置备份可导出到 Git/S3，属 DR 功能。
 
 ---
 
@@ -719,8 +769,8 @@ internal/
     argocd/                    # Argo CD API client
     argowf/                    # Argo Workflows API client
     harbor/                    # Harbor API client
+    oci/                       # OCI 制品仓库操作（模板发布/拉取）
     ansible/                   # Ansible Runner 封装（K8s Job 触发）
-    git/                       # Git 操作（读 chart、写 values）
     prometheus/                # 监控查询
     kube/                      # K8s API（集群健康检查）
     secrets/                   # 密钥加密存储（AES-256-GCM）
@@ -778,10 +828,9 @@ internal/
 | 平台 Go 后端宕机 | 无法发起变更操作，**线上服务不受影响** | 多副本部署，健康检查自动重启 |
 | Argo CD 不可用 | 无法发起新部署，**已部署服务不受影响** | Argo CD 多副本，CrashBackoff 自动恢复 |
 | Argo Workflows 不可用 | 无法构建新镜像 | 不影响已部署服务，恢复后重试 |
-| Harbor 不可用 | 无法推送/拉取镜像 | 多副本部署，定期备份 |
+| Harbor 不可用 | 无法推送/拉取镜像和模板制品 | 多副本部署，定期备份 |
 | PostgreSQL 故障 | 平台不可用 | CloudNativePG 自动 failover（RTO < 30s），WAL 归档支持 PITR |
 | Redis 故障 | 部署状态缓存失效，降级直查 | AOF 持久化 + Sentinel |
-| Git 仓库不可用 | 无法触发新部署/配置变更 | 不影响已部署服务，Argo CD 使用最后已知状态 |
 
 **核心原则**：平台是控制面，数据面（线上服务）不依赖平台运行。
 
@@ -858,9 +907,8 @@ internal/
 |------|------|------|------|
 | Argo CD 管理 400+ Application 性能 | 中 | 中 | M2 阶段做性能验证；必要时调优 Argo CD 参数 |
 | 100+ 服务接入工作量 | 中 | 中 | 平台提供标准化接入流程，服务按需接入 |
-| Git 并发写入瓶颈 | 中 | 中 | 平台层 Git 写入队列串行化；评估按团队分仓库 |
 | Webhook 通知投递失败 | 中 | 高 | 重试（3 次指数退避）+ 通知合并策略 + 站内消息兜底 |
 | OIDC/SSO 对接延迟 | 高 | 高 | 跨团队协调，提前启动对接 |
 | 生产 K8s RBAC 权限审批 | 中 | 高 | 提前规划所需权限清单，与集群管理员协调 |
-| Git 仓库写权限/分支保护 | 中 | 中 | 提前打通平台 Git 账号权限和分支保护规则 |
 | 配置变更导致服务启动失败 | 中 | 高 | Helm values schema 校验 + Argo CD 健康检查失败自动回退 ConfigSnapshot |
+| OCI 制品仓库可用性 | 中 | 高 | Harbor 高可用部署；模板制品缓存策略（拉取后缓存到本地） |

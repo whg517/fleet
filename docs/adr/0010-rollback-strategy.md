@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted
+Accepted（v2 — 平台托管模式，2026-07-15 更新）
 
 ## 背景
 
@@ -17,7 +17,6 @@ Accepted
 | 触发条件 | Argo CD Application 状态为 Degraded 持续超过 5 分钟 |
 | 触发方式 | 手动触发（默认） / 自动触发（可选，按服务配置） |
 | 回滚操作 | `argocd app rollback`（回到上一个 healthy sync） |
-| Git 同步 | 回滚后平台异步 Git commit 同步期望状态 |
 | Prod 审批 | 自动回滚不需要审批（紧急恢复优先）；手动回滚到指定历史版本需审批 |
 | 成功判定 | Argo CD Application 状态恢复 Healthy |
 
@@ -26,10 +25,9 @@ Accepted
 ### 正面
 - 自动回滚减少 MTTR，线上故障快速恢复
 - 紧急回滚不需要审批等待，符合运维优先原则
-- 回滚不改 Git，操作快速，Git 同步异步完成
+- 平台通过 Argo CD API 直接执行回滚，无 Git 依赖，操作快速
 
 ### 负面
-- 回滚后 Git 与实际状态短暂不一致（异步同步期间）
 - 自动回滚可能在服务自身有 bug 时反复回滚（需设置最大重试次数）
 
 ### 中性
@@ -39,5 +37,5 @@ Accepted
 
 | 方案 | 拒绝理由 |
 |------|---------|
-| Git revert 回滚 | 需要 Git commit + Argo CD reconcile，延迟太大 |
+| Git revert 回滚 | 需要 Git commit + Argo CD reconcile，延迟太大，且平台不依赖 Git |
 | 只支持手动回滚 | MTTR 依赖人工响应，不适合 prod 紧急场景 |

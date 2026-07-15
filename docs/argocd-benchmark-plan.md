@@ -32,7 +32,7 @@
 | G4 | 并发 sync 吞吐 (20 并发) | 全部 < 5min 完成 | 全部 < 10min | 20 个 App 同时触发 sync |
 | G5 | 并发 sync 吞吐 (50 并发) | 全部 < 8min 完成 | 全部 < 15min | 极端场景压力测试 |
 | G6 | Application 状态变更 watch 延迟 | < 5s | < 15s | 从 K8s 资源变更到 Argo CD 反映状态变化 |
-| G7 | Git webhook → sync 完成端到端延迟 | < 120s | < 300s | dev 环境自动 sync 场景 |
+| G7 | 平台 API 触发 → sync 完成端到端延迟 | < 120s | < 300s | dev 环境自动 sync 场景 |
 | G8 | Argo CD Server 内存使用 (400 App 稳态) | < 1Gi | < 2Gi | 稳态运行 1h 后 |
 | G9 | Argo CD Application Controller 内存 | < 2Gi | < 4Gi | 稳态运行 1h 后 |
 | G10 | Argo CD Server CPU 使用率 (400 App) | < 500m | < 1000m | 稳态平均 |
@@ -144,23 +144,35 @@ bench-app/
 - 无外部依赖：不依赖数据库/中间件，确保 sync 延迟只反映 Argo CD 自身性能
 - 参数化：`.Values.appId` 注入编号，`.Values.env` 注入环境标识
 
-#### 2.2.2 Git 仓库准备
+#### 2.2.2 OCI 制品准备
+
+将 `bench-app` Helm Chart 打包为 OCI 制品，推送到 Harbor：
+
+```bash
+# 打包 Chart
+helm package bench-app --version 1.0.0
+
+# 推送到 Harbor
+helm registry login harbor.example.com -u $HARBOR_USER -p $HARBOR_PASS
+helm push bench-app-1.0.0.tgz oci://harbor.example.com/charts
+```
+
+制品地址：`oci://harbor.example.com/charts/bench-app:1.0.0`
+
+Application YAML 通过 `argocd-apps/` 目录批量管理，但 Chart 源不再依赖 Git 仓库目录结构：
 
 ```
-bench-repo/
-├── helm-charts/
-│   └── bench-app/           # 上述 Chart
-└── argocd-apps/
-    ├── dev/
-    │   ├── bench-001.yaml
-    │   ├── bench-002.yaml
-    │   └── ...               # 100 个
-    ├── test/
-    │   └── ...               # 100 个
-    ├── pre/
-    │   └── ...               # 100 个
-    └── prod/
-        └── ...               # 100 个
+argocd-apps/
+├── dev/
+│   ├── bench-001.yaml
+│   ├── bench-002.yaml
+│   └── ...               # 100 个
+├── test/
+│   └── ...               # 100 个
+├── pre/
+│   └── ...               # 100 个
+└── prod/
+    └── ...               # 100 个
 ```
 
 #### 2.2.3 批量生成脚本
@@ -170,7 +182,8 @@ bench-repo/
 # generate-apps.sh — 批量生成 400 个 Argo CD Application YAML
 set -euo pipefail
 
-CHART_REPO_URL="https://your-gitlab/bench-repo/helm-charts"
+OCI_URL="oci://harbor.example.com/charts/bench-app"
+CHART_VERSION="1.0.0"
 NAMESPACES=("dev" "test" "pre" "prod")
 APPS_PER_ENV=100
 
@@ -193,9 +206,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: ${CHART_REPO_URL}
-    targetRevision: HEAD
-    path: helm-charts/bench-app
+    repoURL: ${OCI_URL}
+    targetRevision: ${CHART_VERSION}
+    chart: bench-app
     helm:
       values: |
         appId: "${app_name}"
@@ -285,7 +298,7 @@ echo "Sync trigger completed."
 
 - [ ] 独立测试 K8s 集群（或隔离 namespace），不影响业务环境
 - [ ] Argo CD 安装并配置上述资源/参数
-- [ ] Git 仓库创建，包含 bench-app Chart 和 400+ Application 定义
+- [ ] Harbor OCI 制品仓库就绪，bench-app Chart 已推送
 - [ ] Prometheus scrape Argo CD metrics 已配置
 - [ ] Grafana 导入 Argo CD Dashboard（官方 ID: 14592 / 15760）
 - [ ] 压测脚本部署到执行节点，argocd CLI 已登录
@@ -410,7 +423,7 @@ done
 | 指标 | 采集方式 |
 |------|----------|
 | sync → Healthy 总延迟 | 时间戳差值 |
-| Git → repo-server clone/render 延迟 | Argo CD sync_result 时间线 |
+| OCI 制品拉取/render 延迟 | Argo CD sync_result 时间线 |
 | K8s resource create → ready 延迟 | K8s events 时间戳 |
 | Argo CD health check 延迟 | App status operationState 时间线 |
 
@@ -468,52 +481,53 @@ wait
 
 ---
 
-### 场景 5：Git webhook 触发到 sync 完成的端到端延迟
+### 场景 5：平台 API 触发到 sync 完成的端到端延迟
 
-**目的**：测量 GitOps 全链路延迟——从 Git commit 到 Argo CD 自动 sync 完成。对应 dev/test 环境自动部署场景。
+**目的**：测量平台托管模式全链路延迟——从平台 API（或 Argo CD API）更新 Application values 到 sync 完成。对应 dev/test 环境通过平台触发部署的场景。
 
 **步骤**：
 
 ```bash
-# 5a. 单个 App 的 webhook → sync 全链路
+# 5a. 单个 App 的 API 触发 → sync 全链路
 APP="bench-dev-001"
 START_MS=$(date -u +%s%3N)
 
-# 修改 Helm values 并 commit
-cd bench-repo
-yq -i ".appId = \"bench-dev-001-modified\"" "argocd-apps/dev/bench-001.yaml"
-git add -A
-git commit -m "bench: trigger webhook test"
-git push origin main
+# 通过 Argo CD API 更新 Application 的 Helm values
+argocd app set "$APP" \
+  --helm-set appId="bench-dev-001-modified"
 
-# 轮询直到 Argo CD 检测到变更并完成 sync
+# 触发 sync
+argocd app sync "$APP" --timeout 300 >/dev/null 2>&1
+
+# 轮询直到 sync 完成
 while true; do
-  SYNC_STATUS=$(argocd app get "$APP" -o json | jq -r '.status.sync.status')
   HEALTH_STATUS=$(argocd app get "$APP" -o json | jq -r '.status.health.status')
-  REVISION=$(argocd app get "$APP" -o json | jq -r '.status.sync.revision')
+  SYNC_STATUS=$(argocd app get "$APP" -o json | jq -r '.status.sync.status')
 
-  if [ "$HEALTH_STATUS" = "Healthy" ] && [ "$REVISION" = "$(git rev-parse HEAD)" ]; then
+  if [ "$HEALTH_STATUS" = "Healthy" ] && [ "$SYNC_STATUS" = "Synced" ]; then
     END_MS=$(date -u +%s%3N)
-    echo "Git push → sync complete = $(( END_MS - START_MS ))ms"
+    echo "API trigger → sync complete = $(( END_MS - START_MS ))ms"
     break
   fi
   sleep 2
 done
 
-# 5b. 无 webhook（轮询模式）对比测试
-# 临时禁用 webhook，依赖 Argo CD 默认 3min 轮询，测量延迟差异
+# 5b. 通过平台 API 触发（如果平台封装了部署接口）
+# curl -X PUT https://platform-api/services/bench-dev-001/deploy \
+#   -H 'Content-Type: application/json' \
+#   -d '{"values":{"appId":"bench-dev-001-modified"}}'
 ```
 
 **采集指标**：
 
 | 指标 | 采集方式 |
 |------|----------|
-| Git push → Argo CD 检测到变更延迟 | webhook 时间戳 vs App sync 时机 |
-| Argo CD 检测 → sync 开始延迟 | `operationState.startedAt` - 检测时间 |
+| API 调用 → Argo CD 开始处理延迟 | `operationState.startedAt` - API 调用时间戳 |
+| Argo CD 检测 → sync 开始延迟 | `operationState.startedAt` - 参数更新时间 |
 | sync 开始 → Healthy 延迟 | `operationState.finishedAt` - `startedAt` |
-| 端到端总延迟 | Git push 时间 → Healthy 时间 |
+| 端到端总延迟 | API 调用时间 → Healthy 时间 |
 
-**达标判定**：端到端 < 120s（G7 达标线）；webhook 模式比轮询模式至少快 60s。
+**达标判定**：端到端 < 120s（G7 达标线）。
 
 ---
 
@@ -528,8 +542,8 @@ done
 | `argocd_app_sync_status_timestamp` | 最近一次 sync 状态更新时间戳 | G4, G5 |
 | `argocd_app_k8s_request_total` | K8s API 请求计数 | 后台监控 |
 | `argocd_cluster_api_resource_objects` | 监控的 K8s 资源对象数 | 容量规划 |
-| `argocd_git_request_total` | Git 请求计数（fetch/ls-remote） | G7 |
-| `argocd_git_request_duration_seconds_bucket` | Git 请求延迟分布 | G7 |
+| `argocd_git_request_total` | Git 请求计数（fetch/ls-remote） | 场景 3 |
+| `argocd_git_request_duration_seconds_bucket` | Git 请求延迟分布 | 场景 3 |
 | `argocd_repo_server_request_total` | repo-server GRPC 请求计数 | G3 |
 | `argocd_repo_server_request_duration_seconds_bucket` | repo-server 请求延迟 | G3 |
 | `grpc_server_handling_seconds_bucket` | GRPC 请求延迟（按 method 分） | G1 |
@@ -553,7 +567,7 @@ done
 | 自定义指标 | 说明 |
 |-----------|------|
 | `bench_sync_trigger_to_complete_ms` | sync 触发到完成的毫秒数 |
-| `bench_git_push_to_healthy_ms` | Git push 到 Healthy 的毫秒数 |
+| `bench_api_trigger_to_healthy_ms` | API 触发到 Healthy 的毫秒数 |
 | `bench_status_change_detect_ms` | 状态变更感知延迟毫秒数 |
 | `bench_concurrent_sync_total_duration_ms` | 并发 sync 全部完成的毫秒数 |
 
@@ -585,7 +599,7 @@ done
 | 3-单 App sync | sync→Healthy 中位数 | < 90s | < 180s | > 300s |
 | 4-状态感知 | 单 App 变更检测延迟 | < 5s | < 15s | > 30s |
 | 4-状态感知 | 50 App 并发变更全部感知 | < 30s | < 60s | > 120s |
-| 5-webhook | 端到端延迟 | < 120s | < 300s | > 600s |
+| 5-API 触发 | 端到端延迟 | < 120s | < 300s | > 600s |
 | 稳态资源 | server 内存 | < 1Gi | < 2Gi | > 3Gi |
 | 稳态资源 | controller 内存 | < 2Gi | < 4Gi | > 6Gi |
 | 稳态资源 | server CPU 均值 | < 500m | < 1000m | > 2000m |
@@ -636,7 +650,7 @@ done
 | `--operation-processors` | 10 → 20~30 | 场景 2 并发 sync 排队 | 增加 sync 操作处理并发 |
 | `controller.app.resync` | 180s → 60s | 场景 4 全量对账慢 | 缩短全量 resync 间隔（注意会增加 CPU 开销） |
 | `ARGOCD_RECONCILIATION_TIMEOUT` | 调整超时 | sync 超时失败 | 适当增大超时容忍 |
-| `server.repo.server.timeout.seconds` | 60 → 120 | Git 操作超时 | 大仓库 clone 更稳定 |
+| `server.repo.server.timeout.seconds` | 60 → 120 | OCI/Git 操作超时 | 大 Chart 拉取更稳定 |
 | Redis `maxmemory-policy` | allkeys-lru → volatile-ttl | Redis 内存增长快 | 更合理的缓存淘汰 |
 | Application `syncOptions` | 启用 `PruneLast=true` | 大量资源 prune 慢 | 分批处理 prune |
 
@@ -645,7 +659,7 @@ done
 | 组件 | 调整方向 | 触发条件 |
 |------|----------|----------|
 | argocd-application-controller | 增加 CPU limit / memory limit | CPU 长期 > 80% 或 OOM |
-| argocd-repo-server | 扩展到 3~4 replicas | Git clone 排队 |
+| argocd-repo-server | 扩展到 3~4 replicas | OCI 制品拉取排队 |
 | argocd-redis | 增加内存 limit | 缓存命中率低 / eviction 频繁 |
 | argocd-server | 扩展到 3 replicas | API 查询 p95 不达标 |
 
@@ -666,15 +680,15 @@ spec:
 ### 6.4 Repo Server 缓存优化（中等成本）
 
 ```yaml
-# 增加 repo-server 本地 Git 缓存
+# 增加 repo-server 本地缓存
 env:
-  - name: ARGOCD_GIT_CACHE_DIR
-    value: /tmp/git-cache
-  - name: ARGOCD_GIT_CACHE_SIZE
+  - name: ARGOCD_REPO_CACHE_DIR
+    value: /tmp/repo-cache
+  - name: ARGOCD_REPO_CACHE_SIZE
     value: "10"
 
 # 增加 repo-server 并发处理
-# 使用 ReadPath 提升文件读取性能
+# OCI 制品默认有 layer 缓存，此处调优本地渲染缓存
 ```
 
 ### 6.5 架构级优化（高成本，需评估）
@@ -704,14 +718,14 @@ env:
 | 准备 | 环境搭建、脚本编写、Chart 制作 | 0.5 天 |
 | 预热 | 部署 400 App，等待稳态，采集基线 | 0.5 天 |
 | 场景 1-3 | 列表查询 + 并发 sync + 单 App 延迟 | 0.5 天 |
-| 场景 4-5 | 状态感知 + webhook 全链路 | 0.5 天 |
+| 场景 4-5 | 状态感知 + API 触发全链路 | 0.5 天 |
 | 分析 | 数据整理、报告编写、瓶颈分析 | 0.5 天 |
 | **总计** | | **2.5 天** |
 
 ### 7.1 前置依赖
 
 - [ ] 测试 K8s 集群可用（至少 3 worker 节点，16GB+ memory）
-- [ ] Git 仓库创建权限（自建测试 repo）
+- [ ] Harbor OCI 制品仓库访问权限
 - [ ] Argo CD 安装配置权限
 - [ ] Prometheus + Grafana 可用
 
@@ -743,7 +757,7 @@ env:
 |------|----------|----------|
 | sync 一直 Pending | operation processor 队列堆积 | 检查 `workqueue_depth`，增加 `--operation-processors` |
 | App 状态长期 Unknown | controller 未及时处理 | 检查 controller 日志、CPU/内存是否到 limit |
-| Git clone 超时 | repo-server 资源不足 | 检查 repo-server 副本数和 CPU |
+| OCI 制品拉取超时 | repo-server 资源不足 | 检查 repo-server 副本数和 CPU |
 | API 查询超时 | server 资源不足或 Redis 缓存失效 | 检查 Redis 状态、server CPU |
 | 状态更新延迟大 | informer resync 周期过长 | 缩短 `controller.app.resync`，检查 K8s API 延迟 |
 | OOM Kill | App 数量多导致内存不够 | 增加 memory limit，考虑分片 |
