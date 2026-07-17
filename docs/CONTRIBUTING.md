@@ -8,12 +8,13 @@
 
 ```
 创建 Issue（描述需求/Bug）
-  → 创建分支 feat/xxx
+  → Backlog → Todo（分配里程碑 + 优先级）
+  → Todo → In Progress（认领 + 创建分支）
   → 开发 + 提交
-  → 创建 PR（关联 Issue）
-  → Code Review
+  → In Progress → Review（提交 PR）
+  → Code Review + 验收确认
   → Squash Merge 到 main
-  → Issue 自动关闭
+  → Issue 自动关闭 → Done
 ```
 
 ---
@@ -44,9 +45,11 @@
 
 ### Issue 内容要求
 
-- **关联需求/故事**：标注对应的 REQUIREMENTS.md 需求 ID（如 D-01）或用户故事编号
-- **验收条件**：明确 done 的标准（从用户故事复制验收条件）
+- **用户故事**：用 Given-When-Then 格式描述本次需求的服务场景（谁、做什么、达到什么效果）
+- **关联需求**：标注对应的 REQUIREMENTS.md 需求 ID（如 D-01）
+- **验收条件**：明确 done 的标准（从用户故事的验收条件复制）
 - **技术要点**（可选）：实现思路、涉及文件
+- **依赖说明**（可选）：如果依赖其他 Issue 完成，标注 `Blocked by #N`
 
 ### 标签体系
 
@@ -56,6 +59,49 @@
 | `feat` / `fix` / `docs` / `refactor` | 类型 |
 | `M1` ~ `M6` | 里程碑（对应架构文档中的功能里程碑） |
 | 模块标签：`deploy` `auth` `config` `cluster` `audit` `build` `notify` 等 | 功能模块 |
+
+### Issue 依赖与并行管理
+
+#### 依赖表达
+
+使用 GitHub Issue 的 **description + comment** 表达依赖关系：
+
+```markdown
+## 依赖
+
+- Blocked by #12（认证模块必须先完成）
+- Blocked by #15（Ent schema 定义必须先合并）
+```
+
+#### 依赖规则
+
+| 场景 | 规则 |
+|------|------|
+| **硬依赖** | `Blocked by #N`，被依赖 Issue 未 Done 前不得创建分支 |
+| **软依赖** | 在 Issue 中 @ 相关人员沟通确认接口/数据格式后可并行 |
+| **无依赖** | 直接认领开发，互不阻塞 |
+
+#### 并行开发协作
+
+多个 Issue 同时进行时的协作规范：
+
+1. **接口先行**：有交互的模块，先单独提一个 PR 定义接口/类型（如 `store/repos/` 下的 interface），合并后各方并行开发
+2. **分支隔离**：每个 Issue 一个分支，禁止在 A 的分支上做 B 的事
+3. **冲突预防**：涉及同一文件的 Issue，在 Issue comment 中提前沟通分工
+4. **合并顺序**：有依赖关系的按拓扑顺序合并；无依赖的可任意顺序
+5. **AI 子 agent 并行**：多个独立 Issue 可 spawn 多个子 agent 同时工作，各自分支独立，PR 分别提交
+
+```
+示例：M2 部署链路，3 个 Issue 并行
+
+#12 [deploy] Argo CD Application CRUD   ← 无依赖，先做
+#14 [deploy] 部署状态同步（WebSocket）     ← 软依赖 #12（需要 Application 存在才能同步状态）
+#15 [deploy] 部署历史 + 回滚              ← 硬依赖 #12（需要 Deployment 记录）
+
+分工：
+- #12 先做，合并后 #15 可以开始
+- #14 与 #12 并行，先用 mock Application 接口开发前端 WebSocket 订阅
+```
 
 ---
 
@@ -175,10 +221,39 @@ gh pr merge 42 --squash --delete-branch
 | 列 | 说明 |
 |----|------|
 | **Backlog** | 待拆分的用户故事/需求 |
-| **Todo** | 已拆分为 Issue，分配了里程碑，待开发 |
-| **In Progress** | 正在开发（已创建分支） |
-| **Review** | PR 已提交，等待 Review |
-| **Done** | 已合并到 main |
+| **Todo** | 已拆分为 Issue，分配了里程碑和优先级 |
+| **In Progress** | 已认领，正在开发 |
+| **Review** | PR 已提交，等待 Review + 验收 |
+| **Done** | 已合并到 main，验收条件全部满足 |
+
+### Issue 状态流转规则
+
+| 从 → 到 | 触发条件 | 操作人 |
+|---------|---------|--------|
+| Backlog → Todo | Issue 已分配 **Milestone** + **优先级标签** + **模块标签**，验收条件已填写 | Issue 创建者 / 负责人 |
+| Todo → In Progress | 认领 Issue：assign 自己 + 确认无 `Blocked by` 阻塞 + 已创建开发分支 | 开发者 |
+| In Progress → Review | 已提交 PR，PR 描述包含 `Closes #N`，CI 通过（或无 CI 要求） | 开发者 |
+| Review → In Progress | Review 有修改意见，需要返工 | Reviewer（request changes）|
+| Review → Done | Reviewer approve + **验收条件全部打勾** + Squash Merge 完成 | Reviewer |
+| Review → Done（拒绝） | 需求变更/方案否决，关闭 Issue 并说明原因 | 负责人 |
+| 任意 → Backlog | 需要重新评估（优先级变更、方案调整） | 负责人 |
+
+**流转约束**：
+- 禁止跨列跳跃（如 Todo 直接到 Done）
+- `Blocked by` 的 Issue 在依赖项 Done 之前，不得从 Todo 移到 In Progress
+- In Progress 超过 **5 个工作日** 未提交 PR，在 Issue comment 说明原因或降级回 Todo
+
+### 验收闭环
+
+验收在 **PR Review 阶段** 完成，Reviewer 是验收责任人：
+
+1. **Reviewer 逐条核对** PR 描述中的验收条件 checklist
+2. 所有验收条件 ✅ 打勾后，Reviewer approve
+3. approve 后执行 Squash Merge：`gh pr merge <N> --squash --delete-branch`
+4. Issue 通过 `Closes #N` 自动关闭，看板自动移到 Done
+5. 如果验收条件未全部满足，Reviewer request changes 并说明缺什么
+
+> **验收条件不可只看 CI 绿灯**。CI 只验证编译和测试，功能验收需要 Reviewer 确认。
 
 ### 里程碑映射
 
