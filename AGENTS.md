@@ -36,23 +36,42 @@ platform/
 └── .worktree/                  # worktree 开发目录（gitignore）
 ```
 
-## 开发规范
+## 本地开发流程
 
-详见 [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
+所有开发工作（无论单人还是多人、单 Issue 还是并行）都基于 **Git Worktree**：
 
-要点：
-- **Git Worktree 工作流**：每个 Issue 在独立 worktree 中开发，多 agent 并行互不干扰
-  ```bash
-  git worktree add .worktree/feat/42-xxx feat/42-xxx
-  cd .worktree/feat/42-xxx
-  # 完成后
-  git worktree remove .worktree/feat/42-xxx
-  ```
+```bash
+# 1. 从 main 创建分支 + worktree
+git fetch origin
+git worktree add .worktree/feat/42-xxx -b feat/42-xxx origin/main
+
+# 2. 在 worktree 中开发
+cd .worktree/feat/42-xxx
+# ... 编码、测试、提交 ...
+
+# 3. 推送 + 创建 PR
+git push -u origin feat/42-xxx
+gh pr create --title "feat(scope): subject" \
+  --label "🤖 ai-generated"
+
+# 4. PR 合并后清理
+git worktree remove .worktree/feat/42-xxx
+git branch -d feat/42-xxx
+```
+
+**规则**：
+- 禁止在主工作区直接切分支开发，所有分支开发走 worktree
+- worktree 目录 `.worktree/` 已在 `.gitignore` 中
+- 每个 Issue 一个 worktree，完成后及时清理
+
+## 协作规范
+
+详见 [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)，要点：
 - 分支命名：`type/issue-number-short-desc`（feat/fix/docs/refactor/test），禁用 chore
-- 开发前从 main 最新代码切出分支
-- 合并用 `gh pr merge <N> --squash --delete-branch`
 - 提交格式：`type(scope): subject`
-- Issue 状态流转、依赖管理、验收闭环详见 CONTRIBUTING.md §6
+- 合并用 `gh pr merge <N> --squash --delete-branch`
+- Issue 依赖与并行管理：`Blocked by #N`，接口先行，分支隔离
+- Issue 状态流转与验收闭环详见 CONTRIBUTING.md §6
 
 ## 规则
 
