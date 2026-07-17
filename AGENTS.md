@@ -41,6 +41,13 @@ platform/
 详见 [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
 
 要点：
+- **Git Worktree 工作流**：每个 Issue 在独立 worktree 中开发，多 agent 并行互不干扰
+  ```bash
+  git worktree add .worktree/feat/42-xxx feat/42-xxx
+  cd .worktree/feat/42-xxx
+  # 完成后
+  git worktree remove .worktree/feat/42-xxx
+  ```
 - 分支命名：`type/issue-number-short-desc`（feat/fix/docs/refactor/test），禁用 chore
 - 开发前从 main 最新代码切出分支
 - 合并用 `gh pr merge <N> --squash --delete-branch`

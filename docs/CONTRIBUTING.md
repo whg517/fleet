@@ -89,7 +89,7 @@
 2. **分支隔离**：每个 Issue 一个分支，禁止在 A 的分支上做 B 的事
 3. **冲突预防**：涉及同一文件的 Issue，在 Issue comment 中提前沟通分工
 4. **合并顺序**：有依赖关系的按拓扑顺序合并；无依赖的可任意顺序
-5. **AI 子 agent 并行**：多个独立 Issue 可 spawn 多个子 agent 同时工作，各自分支独立，PR 分别提交
+5. **AI 子 agent 并行**：多个独立 Issue 可 spawn 多个子 agent 同时工作，各自 worktree + 分支独立，PR 分别提交
 
 ```
 示例：M2 部署链路，3 个 Issue 并行
