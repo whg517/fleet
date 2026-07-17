@@ -41,11 +41,11 @@ platform/
 详见 [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
 
 要点：
-- Git Worktree 工作流：`.worktree/type/name`
-- 分支命名：`type/name`（feat/fix/docs/refactor/test），禁用 chore
-- 开发前 `git rebase main` 同步
-- 合并用 `git merge --squash`
+- 分支命名：`type/issue-number-short-desc`（feat/fix/docs/refactor/test），禁用 chore
+- 开发前从 main 最新代码切出分支
+- 合并用 `gh pr merge <N> --squash --delete-branch`
 - 提交格式：`type(scope): subject`
+- Issue 状态流转、依赖管理、验收闭环详见 CONTRIBUTING.md §6
 
 ## 规则
 
