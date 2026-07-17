@@ -89,7 +89,7 @@
 2. **分支隔离**：每个 Issue 一个分支，禁止在 A 的分支上做 B 的事
 3. **冲突预防**：涉及同一文件的 Issue，在 Issue comment 中提前沟通分工
 4. **合并顺序**：有依赖关系的按拓扑顺序合并；无依赖的可任意顺序
-5. **AI 子 agent 并行**：多个独立 Issue 可 spawn 多个子 agent 同时工作，各自 worktree + 分支独立，PR 分别提交
+5. **AI 子 agent 并行**：多个独立 Issue 可 spawn 多个子 agent 同时工作，各自在独立 worktree + 分支中开发，PR 分别提交
 
 ```
 示例：M2 部署链路，3 个 Issue 并行
@@ -123,6 +123,29 @@ refactor/55-deployment-lock
 - **main 分支保护**：禁止直接 push，只能通过 PR 合并
 - **分支生命周期短**：合并后立即删除
 - 开发前从 main 最新代码切出分支
+- **所有开发基于 Git Worktree**：禁止在主工作区直接切分支，每个 Issue 在独立 worktree 中开发
+
+#### Git Worktree 工作流
+
+```bash
+# 创建分支 + worktree
+git fetch origin
+git worktree add .worktree/feat/42-xxx -b feat/42-xxx origin/main
+
+# 在 worktree 中开发
+cd .worktree/feat/42-xxx
+# ... 编码、测试、提交 ...
+
+# 推送 + 创建 PR
+git push -u origin feat/42-xxx
+gh pr create
+
+# PR 合并后清理
+git worktree remove .worktree/feat/42-xxx
+git branch -d feat/42-xxx
+```
+
+> `.worktree/` 已在 `.gitignore` 中。每个 Issue 一个 worktree，完成后及时清理。
 
 ---
 
