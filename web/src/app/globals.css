@@ -1,17 +1,1 @@
 @import "tailwindcss";
-@import "./heroui-theme.css";
-
-:root {
-  --background: #ffffff;
-  --foreground: #11181c;
-}
-
-.dark {
-  --background: #1a1a1a;
-  --foreground: #ececec;
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-}
