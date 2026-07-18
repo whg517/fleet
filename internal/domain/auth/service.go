@@ -149,8 +149,8 @@ func (s *authServiceImpl) HandleCallback(ctx context.Context, code, state string
 		return nil, fmt.Errorf("find or create user: %w", err)
 	}
 
-	// 5. Determine roles (placeholder: empty for now, will integrate with Role entity later)
-	roles := []string{}
+	// 5. Determine roles — assign default "viewer" role for new users (A-04)
+	roles := []string{"viewer"}
 
 	// 6. Generate session tokens
 	pair, err := s.sessionMgr.GenerateTokens(ctx, user.ID, user.Email, user.Name, roles)
