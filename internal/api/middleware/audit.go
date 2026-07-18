@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -40,17 +41,22 @@ func AuditMiddleware(auditSvc audit.Service, logger *zap.Logger) echo.Middleware
 				return err
 			}
 
-			// Extract resource info from path
-			resourceType, resourceID := audit.ExtractResourceTypeAndID(c.Path())
+			// Extract resource info from the actual request URL path
+			// (c.Path() returns the route template, e.g. /api/v1/clusters/:id)
+			resourceType, resourceID := audit.ExtractResourceTypeAndID(c.Request().URL.Path)
 
 			// Skip auditing audit-log endpoints themselves to avoid recursive noise
 			if resourceType == "audit-logs" {
 				return err
 			}
 
+			// Use a detached context so the audit record is not cancelled
+			// when the HTTP response completes and the request context is freed.
+			auditCtx := context.WithoutCancel(c.Request().Context())
+
 			// Asynchronously record audit log — does not block the response
 			go func() {
-				recordErr := auditSvc.Record(c.Request().Context(), audit.Record{
+				recordErr := auditSvc.Record(auditCtx, audit.Record{
 					UserID:       getUserID(c),
 					Action:       action,
 					ResourceType: resourceType,
@@ -62,7 +68,7 @@ func AuditMiddleware(auditSvc audit.Service, logger *zap.Logger) echo.Middleware
 					logger.Error("audit middleware: failed to record",
 						zap.Error(recordErr),
 						zap.String("method", c.Request().Method),
-						zap.String("path", c.Path()),
+						zap.String("path", c.Request().URL.Path),
 					)
 				}
 			}()

@@ -7,11 +7,20 @@ import (
 // sensitiveKeys are keys whose values should be masked in audit logs.
 var sensitiveKeys = []string{
 	"password",
+	"passwd",
 	"secret",
 	"token",
 	"key",
 	"kubeconfig",
 	"credentials",
+	"authorization",
+	"cookie",
+	"private_key",
+	"privatekey",
+	"access_token",
+	"refresh_token",
+	"bearer",
+	"ssh_key",
 }
 
 // isSensitiveKey returns true if the key contains any sensitive substring

@@ -22,15 +22,19 @@ func TestSanitize_TopLevel(t *testing.T) {
 func TestSanitize_CaseInsensitive(t *testing.T) {
 	t.Parallel()
 	in := map[string]any{
-		"APIKey":    "abc123",
+		"APIKey":        "abc123",
 		"Authorization": "Bearer xyz",
+		"Description":   "normal field",
 	}
 	got := Sanitize(in)
 	if got["APIKey"] != "***" {
 		t.Errorf("APIKey should be masked, got %v", got["APIKey"])
 	}
-	if got["Authorization"] != "Bearer xyz" {
-		t.Errorf("Authorization should be unchanged (not in sensitive list), got %v", got["Authorization"])
+	if got["Authorization"] != "***" {
+		t.Errorf("Authorization should be masked (now in sensitive list), got %v", got["Authorization"])
+	}
+	if got["Description"] != "normal field" {
+		t.Errorf("Description should be unchanged, got %v", got["Description"])
 	}
 }
 
@@ -122,7 +126,11 @@ func TestSanitize_Empty(t *testing.T) {
 
 func TestSanitize_AllSensitiveKeywords(t *testing.T) {
 	t.Parallel()
-	keywords := []string{"password", "secret", "token", "key", "kubeconfig", "credentials"}
+	keywords := []string{
+		"password", "passwd", "secret", "token", "key", "kubeconfig", "credentials",
+		"authorization", "cookie", "private_key", "privatekey", "access_token",
+		"refresh_token", "bearer", "ssh_key",
+	}
 	for _, kw := range keywords {
 		in := map[string]any{kw: "value"}
 		got := Sanitize(in)

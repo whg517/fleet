@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -59,20 +60,30 @@ type EntClient interface {
 
 // service implements Service using Ent ORM.
 type service struct {
-	client  *ent.Client
-	logger  *zap.Logger
+	client *ent.Client
+	logger *zap.Logger
+	mu     sync.Mutex // serializes Record calls to protect hash chain integrity
 }
 
 // NewService creates a new audit Service backed by the given Ent client.
 func NewService(client *ent.Client, logger *zap.Logger) Service {
 	return &service{
-		client:  client,
-		logger:  logger,
+		client: client,
+		logger: logger,
 	}
 }
 
 // Record creates a new audit log entry with proper hash chain linkage.
+// The entire read-compute-write sequence is serialized by a mutex and
+// wrapped in a database transaction to guarantee chain integrity under
+// concurrent access.
 func (s *service) Record(ctx context.Context, record Record) error {
+	// Lock serializes chain appends within this process.
+	// For multi-process deployments, add a distributed lock or PostgreSQL
+	// advisory lock (pg_advisory_xact_lock) inside the transaction.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Sanitize sensitive fields in detail
 	detail := Sanitize(record.Detail)
 
@@ -80,8 +91,19 @@ func (s *service) Record(ctx context.Context, record Record) error {
 	id := uuid.New().String()
 	now := time.Now().UTC()
 
-	// Get the last entry's prev_hash to link the chain
-	lastEntry, err := s.getLastEntry(ctx)
+	// Use a transaction so the read-compute-write is atomic.
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("audit: begin tx: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// Get the last entry's prev_hash to link the chain (within tx)
+	lastEntry, err := getLastEntryTx(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("audit: get last entry: %w", err)
 	}
@@ -100,8 +122,8 @@ func (s *service) Record(ctx context.Context, record Record) error {
 		prevHash = ComputeHash(lastChainRecord)
 	}
 
-	// Create the audit log entry (INSERT only)
-	_, err = s.client.AuditLog.Create().
+	// Create the audit log entry (INSERT only, within tx)
+	_, err = tx.AuditLog.Create().
 		SetID(id).
 		SetNillableUserID(&record.UserID).
 		SetAction(record.Action).
@@ -121,13 +143,15 @@ func (s *service) Record(ctx context.Context, record Record) error {
 		return fmt.Errorf("audit: write log: %w", err)
 	}
 
-	return nil
+	return tx.Commit()
 }
 
-// getLastEntry returns the most recent audit log entry by created_at desc.
-func (s *service) getLastEntry(ctx context.Context) (*ent.AuditLog, error) {
-	entry, err := s.client.AuditLog.Query().
-		Order(auditlog.ByCreatedAt(sql.OrderDesc())).
+// getLastEntryTx returns the most recent audit log entry within a transaction.
+// Orders by created_at DESC, id DESC to ensure deterministic ordering when
+// multiple entries share the same created_at timestamp.
+func getLastEntryTx(ctx context.Context, tx *ent.Tx) (*ent.AuditLog, error) {
+	entry, err := tx.AuditLog.Query().
+		Order(auditlog.ByCreatedAt(sql.OrderDesc()), auditlog.ByID(sql.OrderDesc())).
 		Limit(1).
 		First(ctx)
 	if err != nil {
@@ -175,9 +199,9 @@ func (s *service) List(ctx context.Context, filter AuditFilter) (*Result, error)
 		return nil, fmt.Errorf("audit: count logs: %w", err)
 	}
 
-	// Fetch page (newest first)
+	// Fetch page (newest first, with id as secondary sort for determinism)
 	logs, err := q.
-		Order(auditlog.ByCreatedAt(sql.OrderDesc())).
+		Order(auditlog.ByCreatedAt(sql.OrderDesc()), auditlog.ByID(sql.OrderDesc())).
 		Offset(offset).
 		Limit(filter.PageSize).
 		All(ctx)
@@ -194,9 +218,11 @@ func (s *service) List(ctx context.Context, filter AuditFilter) (*Result, error)
 }
 
 // VerifyChain loads all audit logs in order and verifies the hash chain.
+// Orders by created_at ASC, id ASC to ensure deterministic ordering when
+// multiple entries share the same created_at timestamp.
 func (s *service) VerifyChain(ctx context.Context) (bool, []VerificationGap, error) {
 	logs, err := s.client.AuditLog.Query().
-		Order(auditlog.ByCreatedAt()).
+		Order(auditlog.ByCreatedAt(), auditlog.ByID()).
 		All(ctx)
 	if err != nil {
 		return false, nil, fmt.Errorf("audit: load logs for verification: %w", err)
