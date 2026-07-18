@@ -5,6 +5,29 @@ description: "Fleet 代码评审：6 个专业子 agent 并行评审 + 三轮机
 
 # Code Review: 多 Agent 并行评审
 
+## 快速调用（从 dev-workflow 编排器调用时看这里）
+
+当 dev-workflow 编排器需要执行 code review 时，按以下步骤操作：
+
+### 本地评审（dev-workflow 阶段 4）
+
+1. 主 agent 进入 worktree 目录
+2. 获取 diff 概览：`git diff origin/main --stat`
+3. 同时 spawn 6 个子 agent（sessions_spawn, mode=run），每个子 agent 使用下方「子 Agent Task 模板 → 本地评审模板」
+4. 等待全部完成（sessions_yield）
+5. 汇总 6 份报告，形成决策
+
+### PR 评审（dev-workflow 阶段 7）
+
+1. 获取 PR 信息：`gh pr view N`
+2. 同时 spawn 6 个子 agent，每个子 agent 使用下方「子 Agent Task 模板 → PR 评审模板」
+3. 等待全部完成（sessions_yield）
+4. 汇总 6 份报告，形成决策
+
+> **编排器提醒**：spawn review 子 agent 时，task 中必须包含完整的检查清单（不是引用，是内联完整内容）。review 子 agent 是 isolated context，无法读取本 skill 文件。
+
+---
+
 ## 核心设计
 
 **6 个专业子 agent 各司其职，并行评审代码。**
@@ -417,3 +440,16 @@ PR 评审 taskName：`review-{dim}-pr{N}`
 3. 子 agent 不 push
 4. 审查报告中不包含敏感数据
 5. PR 评审时主 agent 负责 merge（仅在用户确认后）
+
+---
+
+## 编排器调用备忘
+
+当本 skill 被 dev-workflow 编排器调用时，主 agent 容易犯以下错误（历史教训）：
+
+| 错误 | 后果 | 正确做法 |
+|------|------|----------|
+| 跳过 review 直接 push | 未发现的 bug 进入 PR | 阶段 4 是 feat/fix 必做步骤 |
+| 让开发子 agent 自审 | 盲区未发现 | 主 agent spawn 独立 review 子 agent |
+| spawn review agent 时只给引用不给内容 | 子 agent 不知道检查什么 | task 中内联完整 checklist |
+| 不等 6 个 review 全部完成就推进 | 汇总不完整 | 用 sessions_yield 等全部完成 |
