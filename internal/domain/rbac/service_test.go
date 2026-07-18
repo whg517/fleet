@@ -34,12 +34,6 @@ func newTestEnforcer(t *testing.T) *casbin.Enforcer {
 }
 
 // newTestService creates an RBAC service backed by an in-memory enforcer.
-func newTestService(t *testing.T) *serviceImpl {
-	t.Helper()
-	_ = newTestEnforcer(t) // ensure model/policy parse correctly
-	return &serviceImpl{}
-}
-
 // TestRoleMatrix tests each role against expected allowed/denied operations.
 func TestRoleMatrix(t *testing.T) {
 	e := newTestEnforcer(t)
@@ -329,10 +323,6 @@ func TestCasbinModelText(t *testing.T) {
 
 // mockRedisClient is a minimal mock for testing blacklist logic without Redis.
 // This tests the Service interface contract, not the actual Redis operations.
-
-type mockRedisClient struct {
-	*redis.Client // nil; we only test the key format and interface
-}
 
 // TestBlacklistInterface verifies that the Service interface includes blacklist methods.
 func TestBlacklistInterface(t *testing.T) {
