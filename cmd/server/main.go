@@ -51,7 +51,8 @@ func main() {
 
 	dbDriver, err := db.New(ctx, cfg.Database)
 	if err != nil {
-		log.Fatal("failed to connect database", zap.Error(err))
+		log.Error("failed to connect database", zap.Error(err))
+		os.Exit(1)
 	}
 	defer func() { _ = dbDriver.Close() }()
 	log.Info("database connected")
@@ -59,7 +60,8 @@ func main() {
 	// 4. Connect to Redis
 	redisClient, err := fleetredis.New(ctx, cfg.Redis)
 	if err != nil {
-		log.Fatal("failed to connect redis", zap.Error(err))
+		log.Error("failed to connect redis", zap.Error(err))
+		os.Exit(1)
 	}
 	defer func() { _ = redisClient.Close() }()
 	log.Info("redis connected")

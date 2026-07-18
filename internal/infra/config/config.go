@@ -2,9 +2,8 @@ package config
 
 import (
 	"fmt"
-	"time"
-
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -37,10 +36,19 @@ type DatabaseConfig struct {
 }
 
 // DSN returns the PostgreSQL connection string.
+// DSN returns the PostgreSQL connection string for the database driver.
 func (c DatabaseConfig) DSN() string {
 	return fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		c.Host, c.Port, c.User, c.Password, c.DBName, c.SSLMode,
+	)
+}
+
+// DSNRedacted returns a DSN with the password masked, safe for logging.
+func (c DatabaseConfig) DSNRedacted() string {
+	return fmt.Sprintf(
+		"host=%s port=%d user=%s password=*** dbname=%s sslmode=%s",
+		c.Host, c.Port, c.User, c.DBName, c.SSLMode,
 	)
 }
 

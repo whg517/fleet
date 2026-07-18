@@ -3,7 +3,7 @@
 # ──────────────────────────────────────────────
 # Stage 1: Go builder
 # ──────────────────────────────────────────────
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates tzdata
 
@@ -27,8 +27,9 @@ FROM node:20-alpine AS frontend-builder
 
 WORKDIR /build
 
-COPY web/package.json web/package-lock.json ./
-RUN npm ci
+COPY web/package.json web/package-lock.json* ./
+# Use npm ci if lock exists, otherwise npm install
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 COPY web/ .
 RUN npm run build
@@ -45,8 +46,9 @@ LABEL org.opencontainers.image.title="Fleet" \
 # Copy Go binary
 COPY --from=builder /out/fleet-server /fleet-server
 
-# Copy Next.js static output
-COPY --from=frontend-builder /build/.next /app/.next
+# Copy Next.js standalone output
+COPY --from=frontend-builder /build/.next/standalone /app/
+COPY --from=frontend-builder /build/.next/static /app/.next/static
 COPY --from=frontend-builder /build/public /app/public
 
 # Non-root user (distroless static:nonroot provides user 65532)
