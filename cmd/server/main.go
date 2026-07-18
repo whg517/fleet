@@ -74,7 +74,7 @@ func run(configPath string) error {
 	e.HideBanner = true
 	e.HidePort = true
 
-	middleware.Setup(e, log)
+	middleware.Setup(e, cfg, log)
 
 	// 6. Register routes
 	api.RegisterRoutes(e, dbDriver, redisClient)

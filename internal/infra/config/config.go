@@ -18,9 +18,10 @@ type Config struct {
 
 // ServerConfig holds HTTP server settings.
 type ServerConfig struct {
-	Port         int           `mapstructure:"port"`
-	ReadTimeout  time.Duration `mapstructure:"read_timeout"`
-	WriteTimeout time.Duration `mapstructure:"write_timeout"`
+	Port            int           `mapstructure:"port"`
+	ReadTimeout     time.Duration `mapstructure:"read_timeout"`
+	WriteTimeout    time.Duration `mapstructure:"write_timeout"`
+	AllowedOrigins  []string      `mapstructure:"allowed_origins"`
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.
@@ -81,6 +82,7 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("server.read_timeout", "30s")
 	v.SetDefault("server.write_timeout", "30s")
+	v.SetDefault("server.allowed_origins", []string{"http://localhost:3000"})
 	v.SetDefault("database.host", "localhost")
 	v.SetDefault("database.port", 5432)
 	v.SetDefault("database.sslmode", "disable")

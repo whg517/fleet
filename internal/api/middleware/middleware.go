@@ -4,18 +4,20 @@ import (
 	"github.com/labstack/echo/v4"
 	echomw "github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
+
+	"github.com/whg517/fleet/internal/infra/config"
 )
 
 // Setup configures the middleware chain on the Echo instance.
 // Order: Recover → RequestID → CORS → Logging
-func Setup(e *echo.Echo, logger *zap.Logger) {
+func Setup(e *echo.Echo, cfg *config.Config, logger *zap.Logger) {
 	e.Use(echomw.Recover())
 
 	e.Use(echomw.RequestID())
 
-	// TODO: read allowed origins from config (server.allowed_origins) before production
+	// CORS: origins from config (server.allowed_origins)
 	e.Use(echomw.CORSWithConfig(echomw.CORSConfig{
-		AllowOrigins: []string{"*"},
+		AllowOrigins: cfg.Server.AllowedOrigins,
 		AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.PATCH, echo.DELETE, echo.OPTIONS},
 		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization, echo.HeaderXRequestID},
 	}))
