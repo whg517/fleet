@@ -13,15 +13,8 @@ linters:
     - ineffassign
     - goimports
     - gofmt
-  settings:
-    goimports:
-      local-prefixes:
-        - github.com/whg517/fleet
   exclusions:
     presets:
       - common-false-positives
       - legacy
       - std-error-handling
-    rules:
-      - linters: [goimports]
-        path: _test\.go
