@@ -39,7 +39,8 @@ func main() {
 
 	dbDriver, err := db.New(ctx, cfg.Database)
 	if err != nil {
-		log.Fatal("failed to connect database", zap.Error(err))
+		log.Error("failed to connect database", zap.Error(err))
+		os.Exit(1)
 	}
 	defer func() { _ = dbDriver.Close() }()
 
