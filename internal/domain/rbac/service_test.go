@@ -6,7 +6,6 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
-	"github.com/redis/go-redis/v9"
 )
 
 // newTestEnforcer creates an in-memory Casbin enforcer with default policies.
