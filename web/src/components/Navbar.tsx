@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import Link from "next/link";
 import {
   Navbar as HeroUINavbar,
   NavbarContent,
@@ -8,11 +10,7 @@ import {
   NavbarMenuToggle,
   NavbarBrand,
   NavbarItem,
-  Link,
-  Avatar,
-  Divider,
 } from "@heroui/react";
-import { useState } from "react";
 
 const navItems = [
   { label: "服务目录", href: "/services" },
@@ -31,7 +29,6 @@ export default function Navbar() {
       isMenuOpen={isMenuOpen}
       onMenuOpenChange={setIsMenuOpen}
       maxWidth="xl"
-      className="border-b border-divider"
     >
       <NavbarContent justify="start">
         <NavbarMenuToggle
@@ -48,7 +45,6 @@ export default function Navbar() {
           <NavbarItem key={item.href}>
             <Link
               href={item.href}
-              color="foreground"
               className="text-sm font-medium hover:text-primary transition-colors"
             >
               {item.label}
@@ -59,13 +55,9 @@ export default function Navbar() {
 
       <NavbarContent justify="end">
         <NavbarItem>
-          <Avatar
-            name="U"
-            size="sm"
-            color="primary"
-            isBordered
-            className="cursor-pointer"
-          />
+          <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-medium">
+            U
+          </div>
         </NavbarItem>
       </NavbarContent>
 
@@ -74,25 +66,13 @@ export default function Navbar() {
           <NavbarMenuItem key={`${item.href}-${index}`}>
             <Link
               href={item.href}
-              color="foreground"
               className="w-full"
-              onPress={() => setIsMenuOpen(false)}
+              onClick={() => setIsMenuOpen(false)}
             >
               {item.label}
             </Link>
           </NavbarMenuItem>
         ))}
-        <Divider className="my-2" />
-        <NavbarMenuItem>
-          <Link href="/profile" color="foreground" className="w-full">
-            个人中心
-          </Link>
-        </NavbarMenuItem>
-        <NavbarMenuItem>
-          <Link href="/logout" color="danger" className="w-full">
-            退出登录
-          </Link>
-        </NavbarMenuItem>
       </NavbarMenu>
     </HeroUINavbar>
   );
