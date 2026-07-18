@@ -1,0 +1,52 @@
+# Version control
+.git
+.gitignore
+
+# Worktree
+.worktree
+
+# Docs (keep README)
+docs/
+*.md
+!README.md
+
+# Dependencies
+node_modules/
+vendor/
+
+# Build artifacts
+bin/
+.next/
+out/
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config / env
+*.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# Test
+coverage.out
+coverage.html
+
+# OpenClaw / Claude workspace
+.sopenclaw/
+.claude/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
