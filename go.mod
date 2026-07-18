@@ -1,6 +1,6 @@
 module github.com/whg517/fleet
 
-go 1.26
+go 1.24
 
 require (
 	entgo.io/ent v0.14.4
