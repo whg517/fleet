@@ -9,11 +9,21 @@ import (
 	"github.com/whg517/fleet/internal/api/handler"
 	"github.com/whg517/fleet/internal/api/middleware"
 	"github.com/whg517/fleet/internal/domain/audit"
+	"github.com/whg517/fleet/internal/domain/auth"
 	"github.com/whg517/fleet/internal/domain/cluster"
 	"github.com/whg517/fleet/internal/infra/config"
 	"github.com/whg517/fleet/internal/infra/secrets"
 	entclient "github.com/whg517/fleet/internal/store/ent"
 )
+
+// Deps holds shared dependencies for route registration.
+type Deps struct {
+	DBDriver    *entsql.Driver
+	EntClient   *entclient.Client
+	RedisClient *redis.Client
+	Config      *config.Config
+	Logger      *zap.Logger
+}
 
 // RegisterRoutes sets up all HTTP routes on the Echo instance.
 func RegisterRoutes(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Client) {
@@ -85,4 +95,33 @@ func operatorGuard() echo.MiddlewareFunc {
 			return next(c)
 		}
 	}
+}
+
+// RegisterRoutesWithDeps sets up all HTTP routes using the full dependency set.
+// This is the preferred entry point when auth and other services are available.
+// It registers audit, cluster, and auth routes.
+func RegisterRoutesWithDeps(e *echo.Echo, deps Deps) {
+	// Register core routes (health + audit + cluster).
+	registerRoutes(e, deps.DBDriver, deps.RedisClient, deps.Config, deps.Logger)
+
+	// Auth service
+	sessionMgr := auth.NewSessionManager(deps.Config.JWT, deps.RedisClient)
+	authSvc := auth.NewService(
+		deps.Config.OIDC,
+		deps.Config.JWT,
+		deps.EntClient,
+		deps.RedisClient,
+		deps.Logger,
+	)
+
+	// Auth handler group (public endpoints, no token required)
+	authH := handler.NewAuthHandler(authSvc, deps.Config.JWT, deps.Logger)
+	authGroup := e.Group("/api/v1/auth")
+	authGroup.GET("/login", authH.Login)
+	authGroup.GET("/callback", authH.Callback)
+	authGroup.POST("/refresh", authH.Refresh)
+	authGroup.POST("/logout", authH.Logout)
+
+	// Protected auth endpoint
+	authGroup.GET("/me", authH.Me, middleware.AuthMiddleware(sessionMgr, deps.Logger))
 }

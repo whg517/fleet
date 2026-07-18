@@ -26,3 +26,20 @@ log:
 
 security:
   dek: "0000000000000000000000000000000000000000000000000000000000000000"  # 64 hex chars = 32 bytes. DEV ONLY — override via FLEET_SECURITY_DEK in production
+
+oidc:
+  issuer: ""           # e.g. https://accounts.google.com
+  client_id: ""        # Set via FLEET_OIDC_CLIENT_ID
+  client_secret: ""    # Set via FLEET_OIDC_CLIENT_SECRET
+  redirect_url: "http://localhost:8080/api/v1/auth/callback"
+  scopes:
+    - openid
+    - profile
+    - email
+    - groups
+
+jwt:
+  secret: ""           # Set via FLEET_JWT_SECRET (min 32 chars)
+  access_ttl: 30m
+  refresh_ttl: 8h
+  frontend_url: "http://localhost:3000"

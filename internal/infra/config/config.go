@@ -15,6 +15,8 @@ type Config struct {
 	Redis    RedisConfig    `mapstructure:"redis"`
 	Log      LogConfig      `mapstructure:"log"`
 	Security SecurityConfig `mapstructure:"security"`
+	OIDC     OIDCConfig     `mapstructure:"oidc"`
+	JWT      JWTConfig      `mapstructure:"jwt"`
 }
 
 // SecurityConfig holds security-related settings.
@@ -22,6 +24,23 @@ type SecurityConfig struct {
 	// DEK is a hex-encoded 32-byte (256-bit) data encryption key used for
 	// encrypting secrets such as kubeconfigs. Inject via FLEET_SECURITY_DEK.
 	DEK string `mapstructure:"dek"`
+}
+
+// OIDCConfig holds OIDC provider settings.
+type OIDCConfig struct {
+	Issuer       string   `mapstructure:"issuer"`
+	ClientID     string   `mapstructure:"client_id"`
+	ClientSecret string   `mapstructure:"client_secret"`
+	RedirectURL  string   `mapstructure:"redirect_url"`
+	Scopes       []string `mapstructure:"scopes"`
+}
+
+// JWTConfig holds JWT signing settings for session tokens.
+type JWTConfig struct {
+	Secret        string        `mapstructure:"secret"`
+	AccessTTL     time.Duration `mapstructure:"access_ttl"`
+	RefreshTTL    time.Duration `mapstructure:"refresh_ttl"`
+	FrontendURL   string        `mapstructure:"frontend_url"`
 }
 
 // ServerConfig holds HTTP server settings.
@@ -101,6 +120,10 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("log.level", "info")
 	v.SetDefault("log.encoding", "json")
 	v.SetDefault("security.dek", "")
+	v.SetDefault("oidc.scopes", []string{"openid", "profile", "email", "groups"})
+	v.SetDefault("jwt.access_ttl", "30m")
+	v.SetDefault("jwt.refresh_ttl", "8h")
+	v.SetDefault("jwt.frontend_url", "http://localhost:3000")
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config: %w", err)
