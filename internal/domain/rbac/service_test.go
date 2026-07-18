@@ -82,9 +82,12 @@ func TestRoleMatrix(t *testing.T) {
 		{"developer POST deployments", "developer", "*", "/api/v1/deployments", "POST", true},
 		{"developer denied DELETE clusters", "developer", "*", "/api/v1/clusters/123", "DELETE", false},
 
-		// viewer — read-only across all v1 endpoints
+		// viewer — read-only access to specific resource groups
 		{"viewer GET clusters", "viewer", "*", "/api/v1/clusters", "GET", true},
-		{"viewer GET anything", "viewer", "*", "/api/v1/anything", "GET", true},
+		{"viewer GET services", "viewer", "*", "/api/v1/services", "GET", true},
+		{"viewer GET deployments", "viewer", "*", "/api/v1/deployments", "GET", true},
+		{"viewer GET audit-logs", "viewer", "*", "/api/v1/audit-logs", "GET", true},
+		{"viewer denied GET rbac", "viewer", "*", "/api/v1/rbac/roles", "GET", false},
 		{"viewer denied POST", "viewer", "*", "/api/v1/clusters", "POST", false},
 		{"viewer denied DELETE", "viewer", "*", "/api/v1/clusters/123", "DELETE", false},
 
@@ -236,13 +239,14 @@ func TestDefaultViewerRole(t *testing.T) {
 	userID := "new-user-from-oidc"
 	_, _ = e.AddRoleForUser(userID, "viewer", "*")
 
-	// Viewer can GET any /api/v1/* path
+	// Viewer can GET specific resource paths
 	paths := []string{
 		"/api/v1/clusters",
 		"/api/v1/clusters/123",
 		"/api/v1/services",
 		"/api/v1/deployments",
 		"/api/v1/environments",
+		"/api/v1/audit-logs",
 	}
 	for _, path := range paths {
 		ok, err := e.Enforce(userID, "*", path, "GET")
@@ -339,6 +343,6 @@ func TestBlacklistInterface(t *testing.T) {
 	ctx := context.Background()
 	// These will fail at runtime without redis, but the interface must compile
 	_, _ = svc.IsBlacklisted(ctx, "user-1")
-	_ = svc.AddToBlacklist(ctx, "user-1")     // will error at runtime
+	_ = svc.AddToBlacklist(ctx, "user-1")      // will error at runtime
 	_ = svc.RemoveFromBlacklist(ctx, "user-1") // will error at runtime
 }

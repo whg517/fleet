@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
@@ -52,8 +53,17 @@ var defaultPolicies = [][]string{
 	{"p", "developer", "*", "/api/v1/deployments", "POST"},
 	{"p", "developer", "*", "/api/v1/deployments/*", "POST"},
 
-	// viewer — read-only across all v1 endpoints
-	{"p", "viewer", "*", "/api/v1/*", "GET"},
+	// viewer — read-only access to specific resource groups (not RBAC management)
+	{"p", "viewer", "*", "/api/v1/clusters", "GET"},
+	{"p", "viewer", "*", "/api/v1/clusters/*", "GET"},
+	{"p", "viewer", "*", "/api/v1/environments", "GET"},
+	{"p", "viewer", "*", "/api/v1/environments/*", "GET"},
+	{"p", "viewer", "*", "/api/v1/services", "GET"},
+	{"p", "viewer", "*", "/api/v1/services/*", "GET"},
+	{"p", "viewer", "*", "/api/v1/deployments", "GET"},
+	{"p", "viewer", "*", "/api/v1/deployments/*", "GET"},
+	{"p", "viewer", "*", "/api/v1/audit-logs", "GET"},
+	{"p", "viewer", "*", "/api/v1/audit-logs/*", "GET"},
 
 	// auditor — audit logs + cluster read
 	{"p", "auditor", "*", "/api/v1/audit-logs", "GET"},
@@ -70,7 +80,7 @@ var RoleDescriptions = map[string]string{
 	"admin":     "Full system access including user management",
 	"operator":  "Cluster and deployment management",
 	"developer": "Service management and deployment creation",
-	"viewer":    "Read-only access to all resources",
+	"viewer":    "Read-only access to clusters, services, deployments, and audit logs",
 	"auditor":   "Audit log access and cluster read",
 }
 
@@ -113,6 +123,15 @@ func NewService(dsn string, redisClient *redis.Client, logger *zap.Logger) (Serv
 	if err != nil {
 		return nil, fmt.Errorf("rbac: open gorm: %w", err)
 	}
+
+	// Configure connection pool
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("rbac: get underlying sql.DB: %w", err)
+	}
+	sqlDB.SetMaxOpenConns(25)
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetConnMaxLifetime(5 * time.Minute)
 
 	// Create Casbin adapter backed by PostgreSQL
 	adapter, err := gormadapter.NewAdapterByDB(db)
@@ -184,7 +203,7 @@ func (s *serviceImpl) GetRolesForUser(userID string) ([]string, error) {
 // GetUserPermissions returns the permission matrix for a user.
 // It combines permissions from all roles the user has.
 func (s *serviceImpl) GetUserPermissions(userID string) ([][]string, error) {
-	roles, err := s.enforcer.GetRolesForUser(userID)
+	roles, err := s.enforcer.GetRolesForUser(userID, "*")
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +246,11 @@ func (s *serviceImpl) AddToBlacklist(ctx context.Context, userID string) error {
 	if s.redis == nil {
 		return fmt.Errorf("rbac: redis not available")
 	}
-	return s.redis.SAdd(ctx, blacklistKey(userID), "disabled").Err()
+	if err := s.redis.SAdd(ctx, blacklistKey(userID), "disabled").Err(); err != nil {
+		return err
+	}
+	// Set TTL so stale entries are cleaned up automatically
+	return s.redis.Expire(ctx, blacklistKey(userID), 24*time.Hour).Err()
 }
 
 // RemoveFromBlacklist removes a user from the blacklist, restoring permissions.
@@ -277,7 +300,6 @@ p = sub, dom, obj, act
 
 [role_definition]
 g = _, _, _
-g2 = _, _
 
 [policy_effect]
 e = some(where (p.eft == allow))

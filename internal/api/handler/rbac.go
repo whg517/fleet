@@ -82,6 +82,11 @@ func (h *RBACHandler) AssignUserRoles(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
+	// Limit number of roles to prevent abuse
+	if len(req.Roles) > 10 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "too many roles (max 10)"})
+	}
+
 	// Validate roles
 	validRoles := make(map[string]bool, len(rbac.RoleNames))
 	for _, r := range rbac.RoleNames {

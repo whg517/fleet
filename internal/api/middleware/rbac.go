@@ -21,8 +21,9 @@ func RBACMiddleware(rbacSvc rbac.Service, logger *zap.Logger) echo.MiddlewareFun
 			// Extract userID from auth context
 			userID, _ := c.Get(ContextKeyUserID).(string)
 			if userID == "" {
-				// No authenticated user — let it through (public path or auth not required)
-				return next(c)
+				// No authenticated user on a protected route — deny access
+				logger.Warn("rbac: no user context on protected route", zap.String("path", c.Request().URL.Path))
+				return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
 			}
 
 			ctx := c.Request().Context()
@@ -31,7 +32,7 @@ func RBACMiddleware(rbacSvc rbac.Service, logger *zap.Logger) echo.MiddlewareFun
 			blacklisted, err := rbacSvc.IsBlacklisted(ctx, userID)
 			if err != nil {
 				logger.Error("rbac: blacklist check failed", zap.Error(err))
-				// Fail-open on infra error for availability; log the issue
+				return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "unable to verify account status"})
 			}
 			if blacklisted {
 				return c.JSON(http.StatusForbidden, map[string]string{
@@ -97,4 +98,32 @@ func extractRoles(c echo.Context) []string {
 		return nil
 	}
 	return roles
+}
+
+// RequireRole creates a middleware that checks if the authenticated user
+// has the specified role in their JWT claims. Must be placed AFTER AuthMiddleware.
+func RequireRole(requiredRole string, logger *zap.Logger) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			userID, _ := c.Get(ContextKeyUserID).(string)
+			if userID == "" {
+				return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
+			}
+
+			roles := extractRoles(c)
+			for _, role := range roles {
+				if role == requiredRole {
+					return next(c)
+				}
+			}
+
+			logger.Info("rbac: admin role required",
+				zap.String("user_id", userID),
+				zap.Strings("roles", roles),
+				zap.String("required_role", requiredRole),
+				zap.String("path", c.Request().URL.Path),
+			)
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "admin access required"})
+		}
+	}
 }
