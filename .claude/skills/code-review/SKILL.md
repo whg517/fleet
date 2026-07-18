@@ -439,7 +439,7 @@ PR 评审 taskName：`review-{dim}-pr{N}`
 2. 子 agent 不执行 merge
 3. 子 agent 不 push
 4. 审查报告中不包含敏感数据
-5. PR 评审时主 agent 负责 merge（仅在用户确认后）
+5. PR 评审通过且门禁全绿后，主 agent 可自行 merge
 
 ---
 
