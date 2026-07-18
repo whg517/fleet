@@ -105,25 +105,31 @@ cd .worktree/<type>/<N>-<desc>
 
 ### 阶段 3：门禁检查
 
-编码完成，push 前执行门禁：
+编码完成，push 前执行门禁。所有门禁统一通过 Makefile 执行：
 
-| # | 检查项 | 命令 | 适用条件 |
-|---|--------|------|----------|
-| 1 | 后端 Lint | `make lint` | 改了 Go 代码 |
-| 2 | 后端测试 | `make test` | 改了 Go 代码 |
-| 3 | Ent 代码生成 | `make ent-gen` | 改了 schema |
-| 4 | DB 迁移 | `make db-migrate` | 改了 schema |
-| 5 | 前端构建 | `cd web && npm run build` | 改了前端 |
-| 6 | 服务启动 | `make dev-server` | 改了后端 |
+```bash
+make lint        # 后端静态分析（golangci-lint）
+make test        # 后端测试 + 竞态检测（go test -race）
+make build       # 后端编译
+make web-test    # 前端测试
+make web-build   # 前端构建
+make web-lint    # 前端 lint
+```
+
+**适用规则**：
+- 改了 Go 代码：必须通过 `make lint && make test && make build`
+- 改了前端代码：必须通过 `make web-lint && make web-test && make web-build`
+- 全栈改动：以上全部通过
+- 改了 Ent schema：追加 `make ent-gen`，确保生成代码已提交（`git diff --exit-code`）
+- 纯 docs 类型跳过门禁（无代码变更）
 
 **决策规则**：
 - 全部通过 → 进入阶段 4
 - Lint / 编译失败 → **自主修复**，重新检查，最多重试 3 轮
 - 测试失败 → **自主修复**，重新检查，最多重试 3 轮
 - 3 轮仍未通过 → 停下，展示失败信息让用户介入
-- 纯 docs 类型跳过门禁（无代码变更）
 
-> **注意**：如果阶段 2 由子 agent 执行，门禁检查由**主 agent** 在子 agent 完成后执行，不在子 agent task 中下放。子 agent task 中可要求其自行 `go test` 和 `go build` 确保基本可编译，但正式门禁由主 agent 验证。
+> **注意**：如果阶段 2 由子 agent 执行，门禁检查由**主 agent** 在子 agent 完成后执行，不在子 agent task 中下放。子 agent task 中可要求其自行基本编译测试，但正式门禁由主 agent 验证。
 
 ---
 
@@ -210,13 +216,15 @@ CI 通过后，进行 PR 评审：
 
 ```bash
 gh pr checks <PR#>    # CI 必须全绿
-gofmt -l .            # 格式检查
-go vet ./...          # 静态分析
-go build ./...        # 编译
-go test ./... -race -count=1  # 测试 + 竞态检测
+make lint             # 后端静态分析
+make test             # 后端测试 + 竞态检测
+make build            # 后端编译
+make web-lint         # 前端 lint（改了前端时）
+make web-test         # 前端测试（改了前端时）
+make web-build        # 前端构建（改了前端时）
 ```
 
-全部通过后：
+全部适用的检查通过后：
 
 ```
 gh pr merge <PR#> --squash --delete-branch
