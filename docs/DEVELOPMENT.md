@@ -323,13 +323,14 @@ git worktree remove .worktree/feat/42-argocd-app-management
 4. cd .worktree/<type>/<issue#>-<desc>
 5. 开发 + 本地测试
 6. → 提交前门禁检查（见 §4.3）
-7. git add . && git commit -m "type(scope): subject"
-8. git push -u origin <type>/<issue#>-<desc>
-9. gh pr create
-10. 等待 CI 通过
-11. 人工 Code Review + 验收条件逐条核对
-12. gh pr merge <pr#> --squash --delete-branch
-13. 清理 worktree：git worktree remove .worktree/<type>/<issue#>-<desc>
+7. → 本地 Code Review（见 §4.3.1）
+8. git add . && git commit -m "type(scope): subject"
+9. git push -u origin <type>/<issue#>-<desc>
+10. gh pr create
+11. 等待 CI 通过
+12. PR Code Review + 验收条件逐条核对
+13. gh pr merge <pr#> --squash --delete-branch
+14. 清理 worktree：git worktree remove .worktree/<type>/<issue#>-<desc>
 ```
 
 详见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
@@ -356,6 +357,20 @@ cd web && npm run build && cd ..
 ```
 
 > **规则**：门禁检查未全部通过，禁止 push。CI 会再跑一遍，但本地先过能节省往返时间。
+
+### 4.3.1 本地 Code Review
+
+**门禁检查通过后，push 前建议进行本地代码评审：**
+
+通过 `.claude/skills/code-review` skill 的本地评审模式，6 个专业子 agent 并行审查代码（正确性、架构、API、安全、测试、风格），在本地发现问题并修复，减少 PR 往返。
+
+```
+门禁检查通过 → 本地 code-review → 修复问题 → 提交 → push → PR code-review
+```
+
+**触发方式**：在 worktree 中执行 code-review skill（评审基于 `git diff origin/main`）
+
+> **规则**：feat/fix 类型变更建议走本地 code-review。docs 类型可跳过。
 
 ### 4.4 分支命名
 

@@ -54,15 +54,18 @@ cd .worktree/feat/42-xxx
 
 # 3. 提交前门禁检查
 make lint && make test
-# 改了前端：cd web && pnpm build && cd ..
+# 改了前端：cd web && npm run build && cd ..
 
-# 4. 提交 + 推送 + 创建 PR
+# 4. 本地 Code Review（feat/fix 建议）
+# 通过 code-review skill 评审 git diff origin/main
+
+# 5. 提交 + 推送 + 创建 PR
 git add . && git commit -m "type(scope): subject"
 git push -u origin feat/42-xxx
 gh pr create --title "feat(scope): subject" \
   --label "🤖 ai-generated"
 
-# 5. PR 合并后清理
+# 6. PR 合并后清理
 git worktree remove .worktree/feat/42-xxx
 git branch -d feat/42-xxx
 ```

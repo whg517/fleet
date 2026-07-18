@@ -130,10 +130,26 @@ docs(skills): 新增 developer skill
 | 2 | 后端测试 | `make test` | go test ./... |
 | 3 | Ent 代码生成（改了 schema 时） | `make ent-gen` | 确保 ent 代码同步 |
 | 4 | DB 迁移（改了 schema 时） | `make db-migrate` | atlas migrate |
-| 5 | 前端构建（改了前端时） | `cd web && pnpm build` | TypeScript 编译 |
+| 5 | 前端构建（改了前端时） | `cd web && npm run build` | TypeScript 编译 |
 | 6 | 本地启动验证 | `make dev-server` | 服务能正常启动 |
 
 > 门禁检查未全部通过，禁止 push。
+
+---
+
+## 本地 Code Review
+
+**门禁检查通过后，push 前建议进行本地代码评审：**
+
+通过 `code-review` skill 的本地评审模式，6 个专业子 agent 并行审查代码（正确性、架构、API、安全、测试、风格），在本地发现问题并修复，减少 PR 往返。
+
+```
+门禁检查 → 本地 code-review → 修复问题 → 提交 → push
+```
+
+**触发方式**：在 worktree 中评审 `git diff origin/main`
+
+> feat/fix 类型变更建议走本地 code-review。docs 类型可跳过。
 
 ---
 
