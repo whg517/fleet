@@ -11,7 +11,7 @@ import {
   Link,
   Avatar,
   Divider,
-} from "@heroui/react";
+} from "@heroui/navbar";
 import { useState } from "react";
 
 const navItems = [

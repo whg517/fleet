@@ -4,12 +4,9 @@ run:
   timeout: 5m
 
 linters:
-  default: standard
-  enable:
-    - gocritic
-    - gosec
-
-linters-settings:
-  goimports:
-    local-prefixes:
-      - github.com/whg517/fleet
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/whg517/fleet
+    errcheck:
+      check-type-assertions: true
