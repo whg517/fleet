@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -25,6 +26,8 @@ type Service interface {
 	GetMe(ctx context.Context, accessToken string) (*UserInfo, error)
 	Refresh(ctx context.Context, refreshToken string) (*TokenPair, error)
 	Logout(ctx context.Context, refreshToken string) error
+	CreateExchangeCode(ctx context.Context, pair *TokenPair) (string, error)
+	ConsumeExchangeCode(ctx context.Context, code string) (*TokenPair, error)
 }
 
 // UserInfo is the current-user response model.
@@ -53,23 +56,25 @@ type oidcUserInfo struct {
 
 // authServiceImpl is the concrete Service implementation.
 type authServiceImpl struct {
-	cfg          config.OIDCConfig
-	jwtCfg       config.JWTConfig
-	entClient    *ent.Client
-	redisClient  *redis.Client
-	sessionMgr   *SessionManager
-	logger       *zap.Logger
+	cfg         config.OIDCConfig
+	jwtCfg      config.JWTConfig
+	entClient   *ent.Client
+	redisClient *redis.Client
+	sessionMgr  *SessionManager
+	httpClient  *http.Client
+	logger      *zap.Logger
 }
 
 // NewService creates a new auth Service.
 func NewService(oidcCfg config.OIDCConfig, jwtCfg config.JWTConfig, entClient *ent.Client, rdb *redis.Client, logger *zap.Logger) Service {
 	return &authServiceImpl{
-		cfg:         oidcCfg,
-		jwtCfg:      jwtCfg,
-		entClient:   entClient,
+		cfg:        oidcCfg,
+		jwtCfg:     jwtCfg,
+		entClient:  entClient,
 		redisClient: rdb,
-		sessionMgr:  NewSessionManager(jwtCfg, rdb),
-		logger:      logger,
+		sessionMgr: NewSessionManager(jwtCfg, rdb),
+		httpClient: &http.Client{Timeout: 10 * time.Second},
+		logger:     logger,
 	}
 }
 
@@ -197,25 +202,35 @@ func (s *authServiceImpl) Logout(ctx context.Context, refreshToken string) error
 	return s.sessionMgr.RevokeSession(ctx, refreshToken)
 }
 
+// CreateExchangeCode stores a one-time code in Redis that can be redeemed
+// for a token pair, avoiding token leakage through URL fragments.
+func (s *authServiceImpl) CreateExchangeCode(ctx context.Context, pair *TokenPair) (string, error) {
+	return s.sessionMgr.CreateExchangeCode(ctx, pair)
+}
+
+// ConsumeExchangeCode redeems a one-time exchange code and returns the token pair.
+func (s *authServiceImpl) ConsumeExchangeCode(ctx context.Context, code string) (*TokenPair, error) {
+	return s.sessionMgr.ConsumeExchangeCode(ctx, code)
+}
+
 // --- internal helpers ---
 
 func (s *authServiceImpl) exchangeCodeForTokens(ctx context.Context, code, verifier string) (*tokenResponse, error) {
-	body := fmt.Sprintf(
-		"grant_type=authorization_code&code=%s&redirect_uri=%s&client_id=%s&client_secret=%s&code_verifier=%s",
-		code,
-		s.cfg.RedirectURL,
-		s.cfg.ClientID,
-		s.cfg.ClientSecret,
-		verifier,
-	)
+	form := url.Values{}
+	form.Set("grant_type", "authorization_code")
+	form.Set("code", code)
+	form.Set("redirect_uri", s.cfg.RedirectURL)
+	form.Set("client_id", s.cfg.ClientID)
+	form.Set("client_secret", s.cfg.ClientSecret)
+	form.Set("code_verifier", verifier)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenEndpoint(s.cfg), strings.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenEndpoint(s.cfg), strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +256,7 @@ func (s *authServiceImpl) fetchUserInfo(ctx context.Context, accessToken string)
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

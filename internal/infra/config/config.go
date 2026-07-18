@@ -37,10 +37,12 @@ type OIDCConfig struct {
 
 // JWTConfig holds JWT signing settings for session tokens.
 type JWTConfig struct {
-	Secret        string        `mapstructure:"secret"`
-	AccessTTL     time.Duration `mapstructure:"access_ttl"`
-	RefreshTTL    time.Duration `mapstructure:"refresh_ttl"`
-	FrontendURL   string        `mapstructure:"frontend_url"`
+	Secret       string        `mapstructure:"secret"`
+	AccessTTL    time.Duration `mapstructure:"access_ttl"`
+	RefreshTTL   time.Duration `mapstructure:"refresh_ttl"`
+	FrontendURL  string        `mapstructure:"frontend_url"`
+	Issuer       string        `mapstructure:"issuer"`
+	Audience     string        `mapstructure:"audience"`
 }
 
 // ServerConfig holds HTTP server settings.
@@ -124,6 +126,8 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("jwt.access_ttl", "30m")
 	v.SetDefault("jwt.refresh_ttl", "8h")
 	v.SetDefault("jwt.frontend_url", "http://localhost:3000")
+	v.SetDefault("jwt.issuer", "fleet")
+	v.SetDefault("jwt.audience", "fleet-api")
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config: %w", err)

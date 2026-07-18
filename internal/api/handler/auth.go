@@ -2,7 +2,6 @@ package handler
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -47,6 +46,9 @@ func (h *AuthHandler) Login(c echo.Context) error {
 }
 
 // Callback handles the OIDC provider redirect, exchanges code for tokens.
+// Instead of exposing tokens in the URL fragment, it stores the token pair
+// behind a one-time exchange code and redirects to the frontend with only
+// the exchange code as a query parameter.
 // GET /api/v1/auth/callback?code=...&state=...
 func (h *AuthHandler) Callback(c echo.Context) error {
 	ctx := c.Request().Context()
@@ -68,15 +70,60 @@ func (h *AuthHandler) Callback(c echo.Context) error {
 		})
 	}
 
-	// Redirect to frontend with tokens in fragment (OAuth2 implicit-like pattern)
-	// Frontend extracts tokens from URL fragment.
+	// Store tokens behind a one-time exchange code (10s TTL)
+	exchangeCode, err := h.svc.CreateExchangeCode(ctx, pair)
+	if err != nil {
+		h.logger.Error("failed to create exchange code", zap.Error(err))
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "failed to initiate session",
+		})
+	}
+
+	// Redirect to frontend with only the exchange code (no tokens in URL)
 	frontendURL := h.jwtCfg.FrontendURL
-	redirectURL := frontendURL + "/auth/callback#" +
-		"access_token=" + pair.AccessToken +
-		"&refresh_token=" + pair.RefreshToken +
-		"&expires_in=" + fmt.Sprintf("%d", pair.ExpiresIn)
+	redirectURL := frontendURL + "/auth/callback?code=" + exchangeCode
 
 	return c.Redirect(http.StatusFound, redirectURL)
+}
+
+// ExchangeToken redeems a one-time exchange code for a token pair.
+// This is the second leg of the secure callback flow: the frontend receives
+// an exchange code via redirect query param, then POSTs it here to obtain
+// the actual tokens in the response body.
+// POST /api/v1/auth/token
+func (h *AuthHandler) ExchangeToken(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	code := c.FormValue("code")
+	if code == "" {
+		// Also accept JSON body for flexibility
+		var req struct {
+			Code string `json:"code"`
+		}
+		if err := c.Bind(&req); err == nil && req.Code != "" {
+			code = req.Code
+		}
+	}
+	if code == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "missing code",
+		})
+	}
+
+	pair, err := h.svc.ConsumeExchangeCode(ctx, code)
+	if err != nil {
+		if errors.Is(err, auth.ErrInvalidToken) {
+			return c.JSON(http.StatusUnauthorized, map[string]string{
+				"error": "invalid or expired code",
+			})
+		}
+		h.logger.Error("exchange token failed", zap.Error(err))
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "failed to exchange token",
+		})
+	}
+
+	return c.JSON(http.StatusOK, pair)
 }
 
 // Me returns the current authenticated user's info.

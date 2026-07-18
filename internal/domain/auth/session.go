@@ -21,9 +21,20 @@ var (
 	ErrInvalidToken    = errors.New("invalid token")
 )
 
+// sessionData is the canonical struct stored in Redis for refresh tokens.
+// Using a struct (not map[string]string) ensures roles ([]string) survive serialization.
+type sessionData struct {
+	UserID string   `json:"user_id"`
+	Email  string   `json:"email"`
+	Name   string   `json:"name"`
+	Roles  []string `json:"roles"`
+}
+
 // SessionManager manages access/refresh tokens using JWT + Redis.
 type SessionManager struct {
 	jwtSecret   []byte
+	issuer      string
+	audience    string
 	accessTTL   time.Duration
 	refreshTTL  time.Duration
 	redisClient *redis.Client
@@ -31,8 +42,18 @@ type SessionManager struct {
 
 // NewSessionManager creates a SessionManager from config.
 func NewSessionManager(cfg config.JWTConfig, rdb *redis.Client) *SessionManager {
+	issuer := cfg.Issuer
+	if issuer == "" {
+		issuer = "fleet"
+	}
+	audience := cfg.Audience
+	if audience == "" {
+		audience = "fleet-api"
+	}
 	return &SessionManager{
 		jwtSecret:   []byte(cfg.Secret),
+		issuer:      issuer,
+		audience:    audience,
 		accessTTL:   cfg.AccessTTL,
 		refreshTTL:  cfg.RefreshTTL,
 		redisClient: rdb,
@@ -65,9 +86,11 @@ func (sm *SessionManager) GenerateTokens(ctx context.Context, userID, email, nam
 		Name:   name,
 		Roles:  roles,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(now.Add(sm.accessTTL)),
-			IssuedAt:  jwt.NewNumericDate(now),
-			Subject:   userID,
+			Issuer:     sm.issuer,
+			Audience:   []string{sm.audience},
+			ExpiresAt:  jwt.NewNumericDate(now.Add(sm.accessTTL)),
+			IssuedAt:   jwt.NewNumericDate(now),
+			Subject:    userID,
 		},
 	}
 
@@ -84,11 +107,13 @@ func (sm *SessionManager) GenerateTokens(ctx context.Context, userID, email, nam
 	}
 
 	key := refreshKey(refreshToken)
-	val, err := json.Marshal(map[string]string{
-		"user_id": userID,
-		"email":   email,
-		"name":    name,
-	})
+	sd := sessionData{
+		UserID: userID,
+		Email:  email,
+		Name:   name,
+		Roles:  roles,
+	}
+	val, err := json.Marshal(sd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal session data: %w", err)
 	}
@@ -111,7 +136,7 @@ func (sm *SessionManager) ValidateAccessToken(tokenStr string) (*Claims, error) 
 			return nil, fmt.Errorf("%w: unexpected signing method %v", ErrInvalidToken, t.Header["alg"])
 		}
 		return sm.jwtSecret, nil
-	})
+	}, jwt.WithIssuer(sm.issuer), jwt.WithAudience(sm.audience))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
 	}
@@ -141,12 +166,7 @@ func (sm *SessionManager) RefreshTokens(ctx context.Context, refreshToken string
 		return nil, fmt.Errorf("failed to revoke old refresh token: %w", err)
 	}
 
-	var session struct {
-		UserID string   `json:"user_id"`
-		Email  string   `json:"email"`
-		Name   string   `json:"name"`
-		Roles  []string `json:"roles"`
-	}
+	var session sessionData
 	if err := json.Unmarshal(data, &session); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal session data: %w", err)
 	}
@@ -167,6 +187,51 @@ func (sm *SessionManager) RevokeSession(ctx context.Context, refreshToken string
 	return nil
 }
 
+// CreateExchangeCode stores a one-time exchange code in Redis that can be
+// redeemed for the token pair via ExchangeToken. This avoids leaking tokens
+// through URL fragments.
+func (sm *SessionManager) CreateExchangeCode(ctx context.Context, pair *TokenPair) (string, error) {
+	code, err := generateRandomString(32)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate exchange code: %w", err)
+	}
+
+	data, err := json.Marshal(pair)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal token pair: %w", err)
+	}
+
+	key := exchangeKey(code)
+	if err := sm.redisClient.Set(ctx, key, data, 10*time.Second).Err(); err != nil {
+		return "", fmt.Errorf("failed to store exchange code: %w", err)
+	}
+
+	return code, nil
+}
+
+// ConsumeExchangeCode redeems a one-time exchange code and returns the token pair.
+// The code is deleted immediately after retrieval (single-use).
+func (sm *SessionManager) ConsumeExchangeCode(ctx context.Context, code string) (*TokenPair, error) {
+	key := exchangeKey(code)
+	data, err := sm.redisClient.Get(ctx, key).Bytes()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, ErrInvalidToken
+		}
+		return nil, fmt.Errorf("failed to lookup exchange code: %w", err)
+	}
+
+	// Delete immediately (single-use)
+	sm.redisClient.Del(ctx, key)
+
+	var pair TokenPair
+	if err := json.Unmarshal(data, &pair); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal token pair: %w", err)
+	}
+
+	return &pair, nil
+}
+
 func refreshKey(token string) string {
 	return "session:refresh:" + token
 }
@@ -177,4 +242,8 @@ func generateRefreshToken() (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+func exchangeKey(code string) string {
+	return "auth:exchange:" + code
 }

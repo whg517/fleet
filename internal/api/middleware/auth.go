@@ -22,6 +22,7 @@ const (
 var publicPaths = []string{
 	"/api/v1/auth/login",
 	"/api/v1/auth/callback",
+	"/api/v1/auth/token",
 	"/api/v1/health",
 }
 

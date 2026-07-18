@@ -43,3 +43,5 @@ jwt:
   access_ttl: 30m
   refresh_ttl: 8h
   frontend_url: "http://localhost:3000"
+  issuer: "fleet"       # JWT issuer claim
+  audience: "fleet-api" # JWT audience claim

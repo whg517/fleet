@@ -119,6 +119,7 @@ func RegisterRoutesWithDeps(e *echo.Echo, deps Deps) {
 	authGroup := e.Group("/api/v1/auth")
 	authGroup.GET("/login", authH.Login)
 	authGroup.GET("/callback", authH.Callback)
+	authGroup.POST("/token", authH.ExchangeToken)
 	authGroup.POST("/refresh", authH.Refresh)
 	authGroup.POST("/logout", authH.Logout)
 
