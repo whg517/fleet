@@ -40,3 +40,4 @@ node_modules/
 .sopenclaw/
 # .claude/ 目录入库（项目级 skill 团队共享）
 server
+.worktree/

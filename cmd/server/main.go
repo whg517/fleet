@@ -16,6 +16,7 @@ import (
 
 	"github.com/whg517/fleet/internal/api"
 	"github.com/whg517/fleet/internal/api/middleware"
+	"github.com/whg517/fleet/internal/domain/rbac"
 	"github.com/whg517/fleet/internal/infra/config"
 	"github.com/whg517/fleet/internal/infra/db"
 	fleetredis "github.com/whg517/fleet/internal/infra/redis"
@@ -80,13 +81,21 @@ func run(configPath string) error {
 	// 6. Create Ent client
 	entClient := ent.NewClient(ent.Driver(dbDriver))
 
-	// 7. Register all routes (audit + cluster + auth)
+	// 6b. Initialize RBAC service (Casbin + GORM backed by same PostgreSQL)
+	var rbacSvc rbac.Service
+	rbacSvc, err = rbac.NewService(cfg.Database.DSN(), redisClient, log)
+	if err != nil {
+		log.Warn("rbac service initialization failed; running without RBAC", zap.Error(err))
+	}
+
+	// 7. Register all routes (audit + cluster + auth + RBAC)
 	api.RegisterRoutesWithDeps(e, api.Deps{
 		DBDriver:    dbDriver,
 		EntClient:   entClient,
 		RedisClient: redisClient,
 		Config:      cfg,
 		Logger:      log,
+		RBACService: rbacSvc,
 	})
 
 	// 8. Configure server timeouts

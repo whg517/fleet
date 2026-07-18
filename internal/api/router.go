@@ -11,6 +11,7 @@ import (
 	"github.com/whg517/fleet/internal/domain/audit"
 	"github.com/whg517/fleet/internal/domain/auth"
 	"github.com/whg517/fleet/internal/domain/cluster"
+	"github.com/whg517/fleet/internal/domain/rbac"
 	"github.com/whg517/fleet/internal/infra/config"
 	"github.com/whg517/fleet/internal/infra/secrets"
 	entclient "github.com/whg517/fleet/internal/store/ent"
@@ -23,36 +24,56 @@ type Deps struct {
 	RedisClient *redis.Client
 	Config      *config.Config
 	Logger      *zap.Logger
+	RBACService rbac.Service
 }
 
 // RegisterRoutes sets up all HTTP routes on the Echo instance.
 func RegisterRoutes(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Client) {
-	registerRoutes(e, dbDriver, redisClient, nil, nil)
+	registerRoutes(e, dbDriver, redisClient, nil, nil, nil, nil)
 }
 
 // RegisterRoutesWithConfig sets up routes with full configuration (audit, cluster management, etc.)
 func RegisterRoutesWithConfig(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Client, cfg *config.Config, logger *zap.Logger) {
-	registerRoutes(e, dbDriver, redisClient, cfg, logger)
+	registerRoutes(e, dbDriver, redisClient, cfg, logger, nil, nil)
 }
 
-func registerRoutes(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Client, cfg *config.Config, logger *zap.Logger) {
+func registerRoutes(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Client, cfg *config.Config, logger *zap.Logger, rbacSvc rbac.Service, sessionMgr *auth.SessionManager) {
 	entClient := entclient.NewClient(entclient.Driver(dbDriver))
 
 	// Create audit service and middleware
 	auditSvc := audit.NewService(entClient, logger)
 	auditMW := middleware.AuditMiddleware(auditSvc, logger)
 
-	v1 := e.Group("/api/v1", auditMW)
-
-	// Health endpoints
+	// --- Public group: health endpoints (no auth, no audit) ---
+	public := e.Group("/api/v1")
 	healthH := handler.NewHealthHandler(dbDriver, redisClient)
-	v1.GET("/health", healthH.Liveness)
-	v1.GET("/health/ready", healthH.Readiness)
+	public.GET("/health", healthH.Liveness)
+	public.GET("/health/ready", healthH.Readiness)
 
-	// Audit log endpoints
+	// --- Protected group: auth required ---
+	var authMW echo.MiddlewareFunc
+	if sessionMgr != nil && logger != nil {
+		authMW = middleware.AuthMiddleware(sessionMgr, logger)
+	}
+
+	// Build middleware chain for protected routes: audit + auth
+	protectedMW := []echo.MiddlewareFunc{auditMW}
+	if authMW != nil {
+		protectedMW = append(protectedMW, authMW)
+	}
+
+	v1 := e.Group("/api/v1", protectedMW...)
+
+	// Audit log endpoints (protected)
 	auditH := handler.NewAuditHandler(auditSvc, logger)
 	v1.GET("/audit-logs", auditH.List)
 	v1.GET("/audit-logs/verify", auditH.Verify)
+
+	// RBAC middleware for protected resource endpoints
+	var rbacMW echo.MiddlewareFunc
+	if rbacSvc != nil && logger != nil {
+		rbacMW = middleware.RBACMiddleware(rbacSvc, logger)
+	}
 
 	// Cluster & Environment management
 	if cfg != nil && logger != nil {
@@ -67,45 +88,68 @@ func registerRoutes(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Cl
 		clusterSvc := cluster.NewService(store, dek, logger)
 		clusterH := handler.NewClusterHandler(clusterSvc)
 
-		// Operator/admin middleware placeholder (RBAC in Issue #12)
-		operatorMW := operatorGuard()
+		// Apply RBAC middleware if available
+		var groupMW []echo.MiddlewareFunc
+		if rbacMW != nil {
+			groupMW = append(groupMW, rbacMW)
+		}
 
-		clusters := v1.Group("/clusters")
-		clusters.POST("", clusterH.Create, operatorMW)
+		clusters := v1.Group("/clusters", groupMW...)
+		clusters.POST("", clusterH.Create)
 		clusters.GET("", clusterH.List)
 		clusters.GET("/:id", clusterH.Get)
-		clusters.PUT("/:id", clusterH.Update, operatorMW)
-		clusters.DELETE("/:id", clusterH.Delete, operatorMW)
-		clusters.POST("/:id/test", clusterH.TestConnection, operatorMW)
-		clusters.POST("/:id/environments", clusterH.CreateEnvironment, operatorMW)
+		clusters.PUT("/:id", clusterH.Update)
+		clusters.DELETE("/:id", clusterH.Delete)
+		clusters.POST("/:id/test", clusterH.TestConnection)
+		clusters.POST("/:id/environments", clusterH.CreateEnvironment)
 		clusters.GET("/:id/environments", clusterH.ListEnvironments)
 
 		// Global environment list
-		v1.GET("/environments", clusterH.ListAllEnvironments)
-	}
-}
-
-// operatorGuard is a placeholder middleware for operator/admin RBAC.
-// Full RBAC will be implemented in Issue #12.
-func operatorGuard() echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			// TODO(Issue #12): Implement proper RBAC check here
-			// For now, allow all requests
-			return next(c)
+		if rbacMW != nil {
+			v1.GET("/environments", clusterH.ListAllEnvironments, rbacMW)
+		} else {
+			v1.GET("/environments", clusterH.ListAllEnvironments)
 		}
+	}
+
+	// RBAC management endpoints (protected + admin-only for mutations)
+	if rbacSvc != nil && logger != nil {
+		rbacH := handler.NewRBACHandler(rbacSvc, logger)
+
+		// Read endpoints: any authenticated user with a valid role
+		var readMW []echo.MiddlewareFunc
+		if rbacMW != nil {
+			readMW = append(readMW, rbacMW)
+		}
+		rbacRead := v1.Group("/rbac", readMW...)
+		rbacRead.GET("/roles", rbacH.ListRoles)
+		rbacRead.GET("/users/:id/roles", rbacH.GetUserRoles)
+		rbacRead.GET("/permissions", rbacH.GetPermissions)
+
+		// Write endpoints: admin-only
+		adminMW := []echo.MiddlewareFunc{middleware.RequireRole("admin", logger)}
+		if rbacMW != nil {
+			adminMW = append([]echo.MiddlewareFunc{rbacMW}, adminMW...)
+		}
+		rbacAdmin := v1.Group("/rbac", adminMW...)
+		rbacAdmin.PUT("/users/:id/roles", rbacH.AssignUserRoles)
+		rbacAdmin.POST("/users/:id/disable", rbacH.DisableUser)
+		rbacAdmin.POST("/users/:id/enable", rbacH.EnableUser)
 	}
 }
 
 // RegisterRoutesWithDeps sets up all HTTP routes using the full dependency set.
 // This is the preferred entry point when auth and other services are available.
-// It registers audit, cluster, and auth routes.
+// It registers audit, cluster, auth, and RBAC routes.
 func RegisterRoutesWithDeps(e *echo.Echo, deps Deps) {
-	// Register core routes (health + audit + cluster).
-	registerRoutes(e, deps.DBDriver, deps.RedisClient, deps.Config, deps.Logger)
+	// Create session manager first so it can be passed to registerRoutes.
+	sessionMgr := auth.NewSessionManager(deps.Config.JWT, deps.RedisClient)
+
+	// Register core routes (health + audit + cluster + RBAC).
+	// Auth middleware is applied to the protected v1 group inside registerRoutes.
+	registerRoutes(e, deps.DBDriver, deps.RedisClient, deps.Config, deps.Logger, deps.RBACService, sessionMgr)
 
 	// Auth service
-	sessionMgr := auth.NewSessionManager(deps.Config.JWT, deps.RedisClient)
 	authSvc := auth.NewService(
 		deps.Config.OIDC,
 		deps.Config.JWT,
