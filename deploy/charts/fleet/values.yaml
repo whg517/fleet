@@ -67,12 +67,12 @@ config:
     level: info
     format: json
 
-# ── Secrets (placeholder — override in production) ──
+# ── Secrets (must be set in production — no defaults) ──
 secrets:
-  databasePassword: ""
-  redisPassword: ""
-  oidcClientSecret: ""
-  jwtSecret: ""
+  databasePassword: null
+  redisPassword: null
+  oidcClientSecret: null
+  jwtSecret: null
 
 # ── Ingress ─────────────────────────────────
 ingress:
