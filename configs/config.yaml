@@ -23,3 +23,6 @@ redis:
 log:
   level: info
   encoding: json  # json 或 console
+
+security:
+  dek: "0000000000000000000000000000000000000000000000000000000000000000"  # 64 hex chars = 32 bytes. DEV ONLY — override via FLEET_SECURITY_DEK in production

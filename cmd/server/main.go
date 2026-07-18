@@ -77,7 +77,7 @@ func run(configPath string) error {
 	middleware.Setup(e, cfg, log)
 
 	// 6. Register routes
-	api.RegisterRoutes(e, dbDriver, redisClient, log)
+	api.RegisterRoutesWithConfig(e, dbDriver, redisClient, cfg, log)
 
 	// 7. Configure server timeouts
 	e.Server.Addr = fmt.Sprintf(":%d", cfg.Server.Port)
