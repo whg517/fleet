@@ -69,7 +69,7 @@ config:
 
 # ── Secrets (placeholder — override in production) ──
 secrets:
-  databasePassword: "changeme"
+  databasePassword: ""
   redisPassword: ""
   oidcClientSecret: ""
   jwtSecret: ""

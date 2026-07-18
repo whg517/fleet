@@ -4,7 +4,7 @@ services:
     container_name: fleet-postgres
     environment:
       POSTGRES_USER: fleet
-      POSTGRES_PASSWORD: fleet_dev_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fleet}
       POSTGRES_DB: fleet
     ports:
       - "5432:5432"

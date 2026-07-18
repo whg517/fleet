@@ -26,18 +26,23 @@ func main() {
 	configPath := flag.String("config", "configs/config.yaml", "path to config file")
 	flag.Parse()
 
-	// 1. Load config
-	cfg, err := config.Load(*configPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
+	if err := run(*configPath); err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+func run(configPath string) error {
+	// 1. Load config
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
 	}
 
 	// 2. Init logger
 	log, err := logger.New(cfg.Log.Level, cfg.Log.Encoding)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to init logger: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("init logger: %w", err)
 	}
 	defer func() { _ = log.Sync() }()
 
@@ -51,8 +56,7 @@ func main() {
 
 	dbDriver, err := db.New(ctx, cfg.Database)
 	if err != nil {
-		log.Error("failed to connect database", zap.Error(err))
-		os.Exit(1)
+		return fmt.Errorf("connect database: %w", err)
 	}
 	defer func() { _ = dbDriver.Close() }()
 	log.Info("database connected")
@@ -60,8 +64,7 @@ func main() {
 	// 4. Connect to Redis
 	redisClient, err := fleetredis.New(ctx, cfg.Redis)
 	if err != nil {
-		log.Error("failed to connect redis", zap.Error(err))
-		os.Exit(1)
+		return fmt.Errorf("connect redis: %w", err)
 	}
 	defer func() { _ = redisClient.Close() }()
 	log.Info("redis connected")
@@ -81,20 +84,27 @@ func main() {
 	e.Server.ReadTimeout = cfg.Server.ReadTimeout
 	e.Server.WriteTimeout = cfg.Server.WriteTimeout
 
-	// 8. Start server in goroutine
+	// 8. Start server in goroutine — errors piped via channel
+	errCh := make(chan error, 1)
 	go func() {
 		log.Info("http server listening", zap.String("addr", e.Server.Addr))
 		if err := e.Start(e.Server.Addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatal("server error", zap.Error(err))
+			errCh <- err
 		}
 	}()
 
-	// 9. Graceful shutdown
+	// 9. Wait for signal or server error
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	sig := <-quit
-	log.Info("received shutdown signal", zap.String("signal", sig.String()))
 
+	select {
+	case sig := <-quit:
+		log.Info("received shutdown signal", zap.String("signal", sig.String()))
+	case err := <-errCh:
+		log.Error("server error", zap.Error(err))
+	}
+
+	// 10. Graceful shutdown
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
 
@@ -103,4 +113,5 @@ func main() {
 	}
 
 	log.Info("server stopped")
+	return nil
 }
