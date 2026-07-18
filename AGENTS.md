@@ -20,10 +20,13 @@
 ```
 platform/
 ├── docs/                       # 项目文档
-│   ├── REQUIREMENTS.md         # 需求文档
-│   ├── ARCHITECTURE.md         # 架构文档
-│   ├── CONTRIBUTING.md         # 协作开发规范
-│   ├── adr/                    # 技术决策记录
+│   ├── REQUIREMENTS.md         # 需求清单
+│   ├── ARCHITECTURE.md         # 架构设计
+│   ├── DESIGN-SPEC.md          # 交互规范 / 术语对照
+│   ├── DEVELOPMENT.md          # 开发指南（环境准备 / 启动 / 规范）
+│   ├── CONTRIBUTING.md         # 协作开发规范（PR 流程）
+│   ├── argocd-benchmark-plan.md # Argo CD 性能验证方案
+│   ├── adr/                    # 架构决策记录
 │   └── user-stories/           # 用户故事（运维/开发/PM）
 ├── cmd/                        # Go 入口
 │   └── server/
@@ -63,6 +66,16 @@ git branch -d feat/42-xxx
 - 禁止在主工作区直接切分支开发，所有分支开发走 worktree
 - worktree 目录 `.worktree/` 已在 `.gitignore` 中
 - 每个 Issue 一个 worktree，完成后及时清理
+
+## 开发指南
+
+详见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)，涵盖：
+- 环境准备（工具链、依赖服务）
+- 快速启动（docker compose + go run + pnpm dev）
+- 后端/前端开发规范
+- 数据库与 Schema 管理（Ent + Atlas）
+- 测试策略、配置管理、API 设计规范
+- 错误处理、日志规范、故障排查
 
 ## 协作规范
 
