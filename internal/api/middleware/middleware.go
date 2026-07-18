@@ -17,9 +17,10 @@ func Setup(e *echo.Echo, cfg *config.Config, logger *zap.Logger) {
 
 	// CORS: origins from config (server.allowed_origins)
 	e.Use(echomw.CORSWithConfig(echomw.CORSConfig{
-		AllowOrigins: cfg.Server.AllowedOrigins,
-		AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.PATCH, echo.DELETE, echo.OPTIONS},
-		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization, echo.HeaderXRequestID},
+		AllowOrigins:     cfg.Server.AllowedOrigins,
+		AllowMethods:     []string{echo.GET, echo.POST, echo.PUT, echo.PATCH, echo.DELETE, echo.OPTIONS},
+		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization, echo.HeaderXRequestID},
+		AllowCredentials: true, // Required for cookie-based auth
 	}))
 
 	e.Use(RequestLogger(logger))

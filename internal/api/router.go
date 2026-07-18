@@ -159,7 +159,7 @@ func RegisterRoutesWithDeps(e *echo.Echo, deps Deps) {
 	)
 
 	// Auth handler group (public endpoints, no token required)
-	authH := handler.NewAuthHandler(authSvc, deps.Config.JWT, deps.Logger)
+	authH := handler.NewAuthHandler(authSvc, deps.Config.JWT, deps.Config.Server, deps.Logger)
 	authGroup := e.Group("/api/v1/auth")
 	authGroup.GET("/login", authH.Login)
 	authGroup.GET("/callback", authH.Callback)
