@@ -5,3 +5,7 @@ run:
 
 linters:
   default: standard
+  exclusions:
+    paths:
+      - web/node_modules
+      - .worktree
