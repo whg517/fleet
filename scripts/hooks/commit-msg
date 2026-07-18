@@ -1,0 +1,33 @@
+#!/bin/bash
+# Fleet commit-msg hook
+# 检查 commit message 格式：type(scope): subject
+# 禁止 chore 类型
+
+msg_file="$1"
+msg=$(head -1 "$msg_file")
+
+# 允许的 type
+valid_types="feat|fix|docs|refactor|test|style|perf|ci|build"
+
+# 检查格式
+if ! echo "$msg" | grep -qE "^(${valid_types})(\(.+\))?: .{1,}$"; then
+    echo "❌ Invalid commit message format: $msg"
+    echo ""
+    echo "Expected: type(scope): subject"
+    echo "Valid types: feat, fix, docs, refactor, test, style, perf, ci, build"
+    echo "Forbidden: chore"
+    echo ""
+    echo "Examples:"
+    echo "  feat(auth): add OIDC login flow"
+    echo "  fix(audit): fix hash chain race condition"
+    echo "  docs(api): update API spec"
+    exit 1
+fi
+
+# 明确禁止 chore
+if echo "$msg" | grep -qE "^chore"; then
+    echo "❌ 'chore' type is forbidden. Use 'fix', 'docs', or 'refactor' instead."
+    exit 1
+fi
+
+echo "✅ Commit message format OK: $msg"

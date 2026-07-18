@@ -1,0 +1,25 @@
+#!/bin/bash
+# Fleet pre-commit hook
+# 检查 commit message 格式（在 commit-msg 阶段触发更合适，但 pre-commit 也能做基本检查）
+
+# 检查是否有 golangci-lint，有就跑
+if command -v golangci-lint &>/dev/null; then
+    echo "Running golangci-lint..."
+    golangci-lint run ./... 2>&1
+    if [ $? -ne 0 ]; then
+        echo "❌ golangci-lint failed. Fix issues before committing."
+        exit 1
+    fi
+fi
+
+# 检查 go build
+if command -v go &>/dev/null; then
+    echo "Running go build..."
+    go build ./... 2>&1
+    if [ $? -ne 0 ]; then
+        echo "❌ go build failed. Fix issues before committing."
+        exit 1
+    fi
+fi
+
+echo "✅ Pre-commit checks passed."
