@@ -2,6 +2,16 @@
 
 import {useState} from "react";
 import Link from "next/link";
+import {
+  Navbar as HeroUINavbar,
+  NavbarContent,
+  NavbarMenu,
+  NavbarMenuItem,
+  NavbarMenuToggle,
+  NavbarBrand,
+  NavbarItem,
+  Avatar,
+} from "@heroui/react";
 
 const navItems = [
   {label: "服务目录", href: "/services"},
@@ -13,65 +23,42 @@ const navItems = [
 ];
 
 export default function Navbar() {
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
-    <nav className="border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 items-center justify-between">
-          <div className="flex items-center">
-            <Link href="/" className="text-xl font-bold text-blue-600">
-              Fleet
+    <HeroUINavbar isMenuOpen={isMenuOpen} onMenuOpenChange={setIsMenuOpen}>
+      <NavbarContent justify="start">
+        <NavbarMenuToggle aria-label={isMenuOpen ? "关闭菜单" : "打开菜单"} className="sm:hidden" />
+        <NavbarBrand>
+          <p className="text-xl font-bold text-primary">Fleet</p>
+        </NavbarBrand>
+      </NavbarContent>
+
+      <NavbarContent className="hidden sm:flex gap-4" justify="center">
+        {navItems.map((item) => (
+          <NavbarItem key={item.href}>
+            <Link href={item.href} className="text-sm font-medium hover:text-primary transition-colors">
+              {item.label}
             </Link>
-          </div>
+          </NavbarItem>
+        ))}
+      </NavbarContent>
 
-          {/* Desktop nav */}
-          <div className="hidden sm:flex sm:space-x-4">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-blue-600 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
+      <NavbarContent justify="end">
+        <NavbarItem>
+          <Avatar name="U" size="sm" color="primary" isBordered className="cursor-pointer" />
+        </NavbarItem>
+      </NavbarContent>
 
-          {/* Mobile toggle */}
-          <button
-            onClick={() => setMobileOpen(!mobileOpen)}
-            className="sm:hidden rounded-md p-2 text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-            aria-label="Toggle menu"
-          >
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              {mobileOpen ? (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              )}
-            </svg>
-          </button>
-        </div>
-
-        {/* Mobile nav */}
-        {mobileOpen && (
-          <div className="sm:hidden">
-            <div className="space-y-1 pb-3 pt-2">
-              {navItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMobileOpen(false)}
-                  className="block rounded-md px-3 py-2 text-base font-medium text-gray-700 hover:bg-gray-100 hover:text-blue-600 dark:text-gray-300 dark:hover:bg-gray-800"
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </nav>
+      <NavbarMenu>
+        {navItems.map((item) => (
+          <NavbarMenuItem key={item.href}>
+            <Link href={item.href} className="w-full" onClick={() => setIsMenuOpen(false)}>
+              {item.label}
+            </Link>
+          </NavbarMenuItem>
+        ))}
+      </NavbarMenu>
+    </HeroUINavbar>
   );
 }
