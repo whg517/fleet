@@ -20,7 +20,7 @@
 ### 前置条件
 
 - Go 1.22+
-- Node.js 20+
+- Node.js 24+
 - Docker & Docker Compose
 - PostgreSQL 16 (或使用 docker-compose)
 - Redis 7 (或使用 docker-compose)
