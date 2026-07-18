@@ -20,6 +20,7 @@ import (
 	"github.com/whg517/fleet/internal/infra/db"
 	fleetredis "github.com/whg517/fleet/internal/infra/redis"
 	"github.com/whg517/fleet/internal/infra/logger"
+	"github.com/whg517/fleet/internal/store/ent"
 )
 
 func main() {
@@ -76,15 +77,24 @@ func run(configPath string) error {
 
 	middleware.Setup(e, cfg, log)
 
-	// 6. Register routes
-	api.RegisterRoutesWithConfig(e, dbDriver, redisClient, cfg, log)
+	// 6. Create Ent client
+	entClient := ent.NewClient(ent.Driver(dbDriver))
 
-	// 7. Configure server timeouts
+	// 7. Register all routes (audit + cluster + auth)
+	api.RegisterRoutesWithDeps(e, api.Deps{
+		DBDriver:    dbDriver,
+		EntClient:   entClient,
+		RedisClient: redisClient,
+		Config:      cfg,
+		Logger:      log,
+	})
+
+	// 8. Configure server timeouts
 	e.Server.Addr = fmt.Sprintf(":%d", cfg.Server.Port)
 	e.Server.ReadTimeout = cfg.Server.ReadTimeout
 	e.Server.WriteTimeout = cfg.Server.WriteTimeout
 
-	// 8. Start server in goroutine — errors piped via channel
+	// 9. Start server in goroutine
 	errCh := make(chan error, 1)
 	go func() {
 		log.Info("http server listening", zap.String("addr", e.Server.Addr))
@@ -93,7 +103,7 @@ func run(configPath string) error {
 		}
 	}()
 
-	// 9. Wait for signal or server error
+	// 10. Wait for signal or server error
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
@@ -104,7 +114,7 @@ func run(configPath string) error {
 		log.Error("server error", zap.Error(err))
 	}
 
-	// 10. Graceful shutdown
+	// 11. Graceful shutdown
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
 
