@@ -1,18 +1,18 @@
 ---
-name: pr-review
-description: "Fleet 平台 PR Review：6 个专业子 agent 并行评审 + 三轮评审机制。所有 PR review 必须走此 skill。"
+name: code-review
+description: "Fleet 代码评审：6 个专业子 agent 并行评审 + 三轮机制。支持本地评审（开发完成后）和 PR 评审（提交后）两种模式。"
 ---
 
-# PR Review: 多 Agent 并行评审
+# Code Review: 多 Agent 并行评审
 
 ## 核心设计
 
-**6 个专业子 agent 各司其职，并行评审同一 PR。**
+**6 个专业子 agent 各司其职，并行评审代码。**
 
 每个子 agent 只负责一个维度，带着该领域的专业 checklist 深入审查。主 agent 汇总 6 份报告，形成统一决策。
 
 ```
-PR #N
+代码变更
  ├─ 🔍 correctness-reviewer  — 代码正确性（Critical）
  ├─ 🏗️ architecture-reviewer — 架构合规（Major）
  ├─ 📡 api-reviewer           — API 规范（Major）
@@ -33,9 +33,50 @@ PR #N
 
 ## 触发场景
 
+### 本地评审模式
+
+- 用户要求评审未提交的代码："评审代码" / "review 一下" / "看看我写的代码"
+- 本地开发完成，push 前做代码评审
+- worktree 中编码完成，想先自查再提交
+
+### PR 评审模式
+
 - 用户要求 review PR："review #N" / "看看这个 PR" / "审查代码"
 - PR 创建后需要审查
-- "发起评审"
+
+---
+
+## 评审模式
+
+### 模式一：本地评审
+
+在 worktree 中开发完成后，基于 `git diff` 评审未提交或未 push 的代码。
+
+**适用场景**：push 前自查，发现问题在本地修复，避免往返 CI。
+
+```bash
+# 获取变更（在 worktree 中执行）
+git diff origin/main          # 与 main 分支的差异
+git diff HEAD                 # 未提交的变更
+git diff --cached             # 已 staged 的变更
+git diff origin/main --stat   # 变更文件列表
+```
+
+**输出**：直接在对话中展示评审报告，不创建 PR comment。
+
+### 模式二：PR 评审
+
+基于 `gh pr diff` 评审已提交的 PR。
+
+**适用场景**：PR 提交后，合并前的正式评审。
+
+```bash
+gh pr view N --json title,body,labels,files,additions,deletions,baseRefName,headRefName
+gh pr diff N
+gh pr checks N
+```
+
+**输出**：评审报告 + `gh pr comment N` 发布到 PR。
 
 ---
 
@@ -55,12 +96,18 @@ PR #N
 
 ## 工作流
 
-### 步骤 1：获取 PR 信息
+### 步骤 1：确定评审模式和范围
 
-```bash
-gh pr view N --json title,body,labels,files,additions,deletions,baseRefName,headRefName
-gh pr diff N > /tmp/pr-N-diff.txt
-gh pr checks N
+```
+本地评审：
+  cd <worktree-dir>
+  git diff origin/main --stat    # 变更概览
+  git diff origin/main            # 完整 diff
+
+PR 评审：
+  gh pr view N --json ...
+  gh pr diff N
+  gh pr checks N
 ```
 
 ### 步骤 2：Spawn 6 个专业审查子 Agent
@@ -76,35 +123,32 @@ reviewers = [
   {name: "test",         dim: "E", severity: "Major"},
   {name: "style",        dim: "F", severity: "Minor"},
 ]
-
-for r in reviewers:
-    sessions_spawn(
-        task = build_review_task(pr_info, r),
-        mode = "run",
-        taskName = f"review-{dim}-{pr_number}"
-    )
-
-sessions_yield()  # 等待全部完成
 ```
+
+本地评审 taskName：`review-{dim}-local`
+PR 评审 taskName：`review-{dim}-pr{N}`
 
 ### 步骤 3：汇总报告
 
 主 agent 收集 6 份报告，合并为统一报告：
 
 1. 汇总所有问题（按严重级别排序）
-2. 逐条核对验收条件
+2. 逐条核对验收条件（如有）
 3. 形成决策：
    - 有 🔴 Critical → CHANGES REQUESTED
    - 有 🟡 Major → CHANGES REQUESTED
    - 只有 🔵 Minor → APPROVED（附建议）
    - 全部 APPROVED → APPROVED
 
-### 步骤 4：发布报告 + 修复
+### 步骤 4：处理结果
 
-```bash
-gh pr comment N --body-file /tmp/review-report-r{轮次}.md
-```
+**本地评审**：
+- 直接展示报告
+- APPROVED → 可以 push
+- CHANGES REQUESTED → 修复后重新评审或直接 push（取决于严重程度）
 
+**PR 评审**：
+- 发布报告到 PR comment（`gh pr comment N`）
 - APPROVED → 通知用户可以合并
 - CHANGES REQUESTED → 修复问题，push，进入下一轮
 
@@ -162,7 +206,7 @@ gh pr comment N --body-file /tmp/review-report-r{轮次}.md
 - [ ] 非 CRUD 动作用 `POST /resource/:id/action`
 - [ ] 版本化（URL 路径版本 `/api/v1/`）
 
-**注意**：如果 PR 不涉及 API 变更，直接返回 "N/A — 本 PR 不涉及 API 变更"。
+**注意**：如果不涉及 API 变更，直接返回 "N/A — 本次变更不涉及 API"。
 
 ### 🔒 D. 安全审查员（Critical）
 
@@ -195,7 +239,7 @@ gh pr comment N --body-file /tmp/review-report-r{轮次}.md
 - [ ] CI 中测试能通过
 - [ ] 基准测试（性能敏感场景）
 
-**注意**：脚手架/文档类 PR 可适当降低要求，但需明确说明。
+**注意**：脚手架/文档类变更可适当降低要求，但需明确说明。
 
 ### 🎨 F. 代码风格审查员（Minor）
 
@@ -216,7 +260,45 @@ gh pr comment N --body-file /tmp/review-report-r{轮次}.md
 
 ## 子 Agent Task 模板
 
-每个子 agent 收到的 task 格式：
+### 本地评审模板
+
+```
+你是 Fleet 平台的 {维度名称} 审查员（{角色描述}）。
+
+## 你的审查维度
+只负责 **维度 {字母}. {维度名称}**，不要审查其他维度。
+
+## 检查清单
+{该维度的完整 checklist}
+
+## 审查目标
+- 评审模式：本地评审（未 push 的代码）
+- 变更范围：{file_count} 文件
+
+## 审查方法
+1. 在 {worktree_path} 下执行 `git diff origin/main` 获取变更
+2. 阅读相关项目文档：
+   - docs/ARCHITECTURE.md
+   - docs/DEVELOPMENT.md
+   - .claude/skills/api-design/SKILL.md（仅 API 维度）
+3. 逐文件审查，只关注你负责的维度
+
+## 输出格式
+
+### 维度 {字母} 审查结论：APPROVED / CHANGES REQUESTED
+
+### 问题列表
+| # | 严重级别 | 文件:行号 | 问题 | 建议 |
+|---|---------|----------|------|------|
+
+### 说明
+
+## 安全规则
+- 只读 diff 和文件，不修改代码
+- 不执行 merge，不 push
+```
+
+### PR 评审模板
 
 ```
 你是 Fleet 平台的 {维度名称} 审查员（{角色描述}）。
@@ -235,9 +317,9 @@ gh pr comment N --body-file /tmp/review-report-r{轮次}.md
 ## 审查方法
 1. 获取 diff：`gh pr diff {number}`
 2. 阅读相关项目文档：
-   - docs/ARCHITECTURE.md（{相关章节}）
-   - docs/CONTRIBUTING.md
-   - .claude/skills/api-design/SKILL.md（仅 API 维度需要）
+   - docs/ARCHITECTURE.md
+   - docs/DEVELOPMENT.md
+   - .claude/skills/api-design/SKILL.md（仅 API 维度）
 3. 逐文件审查，只关注你负责的维度
 
 ## 输出格式
@@ -249,7 +331,6 @@ gh pr comment N --body-file /tmp/review-report-r{轮次}.md
 |---|---------|----------|------|------|
 
 ### 说明
-（如果没有问题，简要说明你检查了什么，为什么认为 OK）
 
 ## 安全规则
 - 只读 diff 和文件，不修改代码
@@ -260,10 +341,15 @@ gh pr comment N --body-file /tmp/review-report-r{轮次}.md
 
 ## 汇总报告模板
 
-主 agent 汇总 6 份报告后的输出格式：
+### 本地评审报告
 
 ```markdown
-## 🤖 Code Review Report — PR #{N}（第 {R} 轮）
+## 🤖 Code Review Report — 本地评审（第 {R} 轮）
+
+### 评审范围
+- 模式：本地评审
+- 分支：{branch}
+- 变更：{file_count} 文件，+{additions} / -{deletions}
 
 ### 结论：APPROVED / CHANGES REQUESTED / NEEDS DISCUSSION
 
@@ -295,18 +381,14 @@ gh pr comment N --body-file /tmp/review-report-r{轮次}.md
 | # | 维度 | 文件:行号 | 问题 | 建议 |
 |---|------|----------|------|------|
 
-### 验收条件核对
-
-| 条件 | 状态 | 说明 |
-|------|------|------|
-
 ### 本轮总结
 
 （一段话总结）
-
----
-**审查人：🤖 AI Reviewer Team（第 {R} 轮）**
 ```
+
+### PR 评审报告
+
+同上格式，标题改为 `PR #{N}`，可附加验收条件核对表格。
 
 ---
 
@@ -316,8 +398,8 @@ gh pr comment N --body-file /tmp/review-report-r{轮次}.md
 |----------|------|
 | 任何 🔴 Critical | CHANGES REQUESTED → 修复 → 下一轮 |
 | 任何 🟡 Major | CHANGES REQUESTED → 修复 → 下一轮 |
-| 只有 🔵 Minor | APPROVED → 在 comment 中附建议 |
-| 全部 APPROVED | APPROVED → 可合并 |
+| 只有 🔵 Minor | APPROVED → 在报告中附建议 |
+| 全部 APPROVED | APPROVED → 本地评审可 push / PR 评审可合并 |
 
 ### 三轮通过规则
 
@@ -328,19 +410,10 @@ gh pr comment N --body-file /tmp/review-report-r{轮次}.md
 
 ---
 
-## 多 PR 并行
-
-多个 PR 需要同时 review 时：
-
-每个 PR 独立执行完整流程（6 子 agent × 可能多轮）。
-通过 taskName 区分：`review-{dim}-pr{N}`。
-
----
-
 ## 安全规则
 
 1. 子 agent 只读 diff 和文件，**不修改代码**
 2. 子 agent 不执行 merge
 3. 子 agent 不 push
 4. 审查报告中不包含敏感数据
-5. 主 agent 负责 merge（仅在用户确认后）
+5. PR 评审时主 agent 负责 merge（仅在用户确认后）

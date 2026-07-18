@@ -138,9 +138,9 @@ gh pr diff N
 gh pr checks N
 ```
 
-### PR Review（如项目有 pr-review skill，通过子 agent 执行）
+### Code Review（如项目有 code-review skill，通过子 agent 执行）
 
-1. spawn 子 agent 执行 PR Review（详见 pr-review skill）
+1. spawn 子 agent 执行 Code Review（详见 code-review skill）
 2. 子 agent 输出 review 报告
 3. 根据 review 结果决定：approve / request changes
 
