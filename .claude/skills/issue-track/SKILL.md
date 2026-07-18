@@ -34,7 +34,7 @@ description: "GitHub Issue 驱动的任务追踪与开发流程管理：拆分 I
 
 ### 拆分原则
 
-- 每个 Issue 必须有**用户故事**（As-I-Want-So 格式）
+- 每个 Issue 必须有**用户故事**（操作流程列表格式，覆盖完整用户操作路径，而非单条 As-I-Want-So）
 - 每个 Issue 必须有**明确的验收条件**（可复制的 checklist）
 - 有依赖关系的拆成独立 Issue，Body 里标注 `Blocked by #N`
 - 纯文档变更单独拆，用 `docs` 标签
