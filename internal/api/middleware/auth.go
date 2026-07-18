@@ -52,7 +52,7 @@ func AuthMiddleware(sessionMgr *auth.SessionManager, logger *zap.Logger) echo.Mi
 			token := extractBearerToken(c)
 			if token == "" {
 				return c.JSON(http.StatusUnauthorized, map[string]string{
-					"error": "missing or invalid Authorization header",
+					"error": "missing or invalid token",
 				})
 			}
 
@@ -80,15 +80,21 @@ func AuthMiddleware(sessionMgr *auth.SessionManager, logger *zap.Logger) echo.Mi
 	}
 }
 
-// extractBearerToken extracts the token from "Authorization: Bearer <token>".
+// extractBearerToken extracts the token from "Authorization: Bearer <token>" header,
+// falling back to the access_token cookie if the header is absent.
 func extractBearerToken(c echo.Context) string {
 	authHeader := c.Request().Header.Get(echo.HeaderAuthorization)
-	if authHeader == "" {
-		return ""
+	if authHeader != "" {
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+			return strings.TrimSpace(parts[1])
+		}
 	}
-	parts := strings.SplitN(authHeader, " ", 2)
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-		return ""
+
+	// Fall back to HttpOnly cookie
+	if cookie, err := c.Cookie("access_token"); err == nil {
+		return cookie.Value
 	}
-	return strings.TrimSpace(parts[1])
+
+	return ""
 }
