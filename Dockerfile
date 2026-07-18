@@ -27,9 +27,8 @@ FROM node:24-alpine AS frontend-builder
 
 WORKDIR /build
 
-COPY web/package.json web/package-lock.json* ./
-# Use npm ci if lock exists, otherwise npm install
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+COPY web/package.json ./
+RUN npm install
 
 COPY web/ .
 RUN npm run build

@@ -76,12 +76,7 @@ jobs:
           node-version: "24"
       - name: Install dependencies
         working-directory: web/
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+        run: npm install
       - name: Build
         working-directory: web/
         run: npm run build
