@@ -1,1 +1,9 @@
 @import "tailwindcss";
+@plugin "@heroui/theme";
+
+/* HeroUI v2 needs the full set of design tokens */
+:root {
+  --heroui-primary: #006fee;
+  --heroui-background: #ffffff;
+  --heroui-foreground: #11181c;
+}
