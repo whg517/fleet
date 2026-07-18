@@ -34,9 +34,9 @@
 
 | 工具 | 最低版本 | 推荐版本 | 说明 |
 |------|---------|---------|------|
-| Go | 1.22+ | 1.23+ | 后端语言 |
-| Node.js | 20 LTS+ | 22 LTS+ | 前端构建 |
-| pnpm | 9+ | latest | 前端包管理 |
+| Go | 1.26+ | 1.26+ | 后端语言（go.mod 要求） |
+| Node.js | 22 LTS+ | 24+ | 前端构建 |
+| npm | 10+ | latest | 前端包管理（项目使用 npm） |
 | Docker | 24+ | latest | 容器化构建 |
 | Kubectl | 1.28+ | 1.30+ | K8s 集群操作 |
 | Helm | 3.14+ | latest | K8s 包管理 |
@@ -44,6 +44,18 @@
 | Ent CLI | latest | latest | ORM 代码生成 |
 | Atlas | latest | latest | DB schema 迁移工具 |
 | GitHub CLI (gh) | 2.40+ | latest | PR/Issue 管理 |
+
+### 1.1.1 前端核心依赖
+
+| 依赖 | 版本 | 说明 |
+|------|------|------|
+| Next.js | ^16.2 | React 框架（SPA 模式） |
+| React | ^19.2 | UI 库 |
+| TypeScript | 5.9 | 类型安全 |
+| Tailwind CSS | ^4.3 | 原子化 CSS |
+| HeroUI | ^2.8 | UI 组件库（基于 React Aria） |
+| ESLint | ^10.7 | 代码检查 |
+| golangci-lint | v2 | Go 代码检查 |
 
 ### 1.2 可选工具
 
@@ -62,7 +74,6 @@
 |------|------|-------------|
 | PostgreSQL 16 | 主数据库 | `docker compose up postgres` |
 | Redis 7 | 缓存/队列/分布式锁 | `docker compose up redis` |
-| MinIO | S3 兼容存储（WAL 归档/备份） | `docker compose up minio` |
 
 > 生产环境的 Argo CD、Argo Workflows、Harbor 通过远程连接，本地不需要安装。
 
@@ -70,9 +81,9 @@
 
 ```bash
 # 验证工具链
-go version          # >= 1.22
-node --version      # >= 20
-pnpm --version      # >= 9
+go version          # >= 1.26
+node --version      # >= 22
+npm --version       # >= 10
 docker --version    # >= 24
 kubectl version --client
 helm version
@@ -170,7 +181,7 @@ platform/
 │   │   ├── tsconfig.json
 │   │   └── tailwind.config.ts
 │   ├── next.config.js
-│   └── pnpm-lock.yaml
+│   └── package-lock.json
 │
 ├── deploy/                       # 部署配置
 │   ├── docker/                   # Dockerfile
@@ -253,8 +264,8 @@ make dev-server
 
 ```bash
 cd web
-pnpm install
-pnpm dev        # 默认 :3000
+npm ci
+npm run dev        # 默认 :3000
 ```
 
 ### 3.5 验证
@@ -333,7 +344,7 @@ git worktree remove .worktree/feat/42-argocd-app-management
 | 2 | 后端单元测试 | `make test` | ✅ |
 | 3 | Ent 代码生成（改了 schema 时） | `make ent-gen` | ✅ |
 | 4 | DB 迁移（改了 schema 时） | `make db-migrate` | ✅ |
-| 5 | 前端构建（改了前端时） | `cd web && pnpm build` | ✅ |
+| 5 | 前端构建（改了前端时） | `cd web && npm run build` | ✅ |
 | 6 | 本地启动验证 | `make dev-server` | ✅ |
 
 ```bash
@@ -341,7 +352,7 @@ git worktree remove .worktree/feat/42-argocd-app-management
 make lint && make test
 
 # 改了前端
-cd web && pnpm build && cd ..
+cd web && npm run build && cd ..
 ```
 
 > **规则**：门禁检查未全部通过，禁止 push。CI 会再跑一遍，但本地先过能节省往返时间。
@@ -681,7 +692,7 @@ make db-reset          # 清空 + 重新迁移（仅开发环境！）
 | 集成测试 | infra/ 层外部系统对接 | Go testing + testcontainers | 关键路径覆盖 | `make test-integration` |
 | API 测试 | handler 层 HTTP 请求 | Go testing + httptest | 核心接口覆盖 | `make test-api` |
 | E2E 测试 | 全链路 | Playwright | 核心流程覆盖 | `make test-e2e` |
-| 前端测试 | 组件 + Hooks | Vitest + Testing Library | 关键组件覆盖 | `pnpm test` |
+| 前端测试 | 组件 + Hooks | Vitest + Testing Library | 关键组件覆盖 | `npm test` |
 
 ### 8.2 单元测试规范
 
@@ -1002,7 +1013,7 @@ s.logger.Info("deployment started",
 Push / PR
   → GitHub Actions Trigger
   → Lint (golangci-lint + eslint)
-  → Test (go test + pnpm test)
+  → Test (go test + npm test)
   → Build (go build + next build)
   → Docker Build & Push (Harbor)
   → (main 分支) Helm Deploy to Dev
@@ -1065,8 +1076,8 @@ go generate ./ent
 **前端依赖冲突：**
 ```bash
 cd web
-rm -rf node_modules pnpm-lock.yaml
-pnpm install
+rm -rf node_modules package-lock.json
+npm ci
 ```
 
 **端口冲突：**
@@ -1075,7 +1086,7 @@ pnpm install
 # 修改后端端口
 FLEET_SERVER_PORT=9090 make dev-server
 # 修改前端端口
-cd web && PORT=3001 pnpm dev
+cd web && PORT=3001 npm run dev
 ```
 
 ### 14.2 调试技巧
