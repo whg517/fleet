@@ -1,7 +1,5 @@
-//go:build ignore
-
 // Ent code generation entry point.
-// Run `go generate ./internal/store/ent/...` to regenerate Ent code.
+// Run `go run ./cmd/ent-gen` from project root to regenerate Ent code.
 
 package main
 
@@ -13,7 +11,7 @@ import (
 )
 
 func main() {
-	if err := entc.Generate("./schema", &gen.Config{}, entc.TemplateDir("")); err != nil {
+	if err := entc.Generate("./internal/store/ent/schema", &gen.Config{}, entc.TemplateDir("")); err != nil {
 		log.Fatalf("running ent codegen: %v", err)
 	}
 }

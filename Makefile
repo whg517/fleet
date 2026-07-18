@@ -1,4 +1,7 @@
-.PHONY: dev build generate test lint clean
+.PHONY: dev build generate test lint clean ent-gen
+
+ent-gen:
+	go run ./cmd/ent-gen
 
 dev:
 	go run cmd/server/main.go -config configs/config.yaml
