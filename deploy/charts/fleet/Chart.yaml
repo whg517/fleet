@@ -1,0 +1,14 @@
+apiVersion: v2
+name: fleet
+description: Fleet — DevOps deployment platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - devops
+  - deployment
+  - platform
+  - argocd
+  - fleet
+maintainers:
+  - name: Fleet Team
