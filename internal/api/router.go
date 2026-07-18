@@ -48,7 +48,9 @@ func registerRoutes(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Cl
 	if cfg != nil && logger != nil {
 		dek, err := secrets.ParseDEK(cfg.Security.DEK)
 		if err != nil || len(dek) != 32 {
-			logger.Fatal("FLEET_SECURITY_DEK must be set to a valid 32-byte hex string", zap.Error(err))
+			logger.Fatal("invalid or missing DEK: FLEET_SECURITY_DEK must be set to a valid 64-char hex string (32 bytes)",
+				zap.Error(err),
+			)
 		}
 
 		store := cluster.NewEntStore(entClient)

@@ -466,6 +466,65 @@ func TestMatchLabels(t *testing.T) {
 	}
 }
 
+func TestListClusters_LabelFilterWithPagination(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	// Create 5 clusters: 3 with team=infra, 2 with team=app
+	for i := 0; i < 3; i++ {
+		_, _ = svc.Create(ctx, CreateClusterReq{
+			Name:       fmt.Sprintf("infra-%d", i),
+			APIServer:  "https://10.0.0.1:6443",
+			Kubeconfig: validKubeconfig,
+			Labels:     map[string]string{"team": "infra"},
+		})
+	}
+	for i := 0; i < 2; i++ {
+		_, _ = svc.Create(ctx, CreateClusterReq{
+			Name:       fmt.Sprintf("app-%d", i),
+			APIServer:  "https://10.0.0.1:6443",
+			Kubeconfig: validKubeconfig,
+			Labels:     map[string]string{"team": "app"},
+		})
+	}
+
+	// Page 1, size 2, filter team=infra → 2 clusters, total 3
+	result, err := svc.List(ctx, ClusterFilter{Page: 1, PageSize: 2, Labels: map[string]string{"team": "infra"}})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(result.Clusters) != 2 {
+		t.Errorf("Page 1: got %d clusters, want 2", len(result.Clusters))
+	}
+	if result.Total != 3 {
+		t.Errorf("Total: got %d, want 3", result.Total)
+	}
+
+	// Page 2, size 2, filter team=infra → 1 cluster, total 3
+	result, err = svc.List(ctx, ClusterFilter{Page: 2, PageSize: 2, Labels: map[string]string{"team": "infra"}})
+	if err != nil {
+		t.Fatalf("List page 2: %v", err)
+	}
+	if len(result.Clusters) != 1 {
+		t.Errorf("Page 2: got %d clusters, want 1", len(result.Clusters))
+	}
+	if result.Total != 3 {
+		t.Errorf("Total: got %d, want 3", result.Total)
+	}
+
+	// Page 3, size 2, filter team=infra → 0 clusters, total 3
+	result, err = svc.List(ctx, ClusterFilter{Page: 3, PageSize: 2, Labels: map[string]string{"team": "infra"}})
+	if err != nil {
+		t.Fatalf("List page 3: %v", err)
+	}
+	if len(result.Clusters) != 0 {
+		t.Errorf("Page 3: got %d clusters, want 0", len(result.Clusters))
+	}
+	if result.Total != 3 {
+		t.Errorf("Total: got %d, want 3", result.Total)
+	}
+}
+
 func TestListClusters_StatusFilter(t *testing.T) {
 	svc, client := newTestService(t)
 	ctx := context.Background()

@@ -84,7 +84,13 @@ func (s *EntStore) ListClusters(ctx context.Context, limit, offset int, orgID, s
 	if err != nil {
 		return nil, 0, err
 	}
-	clusters, err := q.Order(entcluster.ByCreatedAt()).Offset(offset).Limit(limit).All(ctx)
+	if offset > 0 {
+		q = q.Offset(offset)
+	}
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	clusters, err := q.Order(entcluster.ByCreatedAt()).All(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -207,23 +213,54 @@ func (s *ServiceImpl) Create(ctx context.Context, req CreateClusterReq) (*Cluste
 }
 
 // List returns a paginated, filtered list of clusters.
+//
+// Note: Label filtering is performed in application memory because the ent
+// store layer does not yet support JSON predicate queries on the labels field.
+// When label filters are active, we fetch all matching org/status clusters
+// (without SQL pagination), filter in memory, then manually paginate the
+// result set. This is acceptable for the expected cluster count (< 1000).
+// TODO: push label filtering into the store layer once ent JSON predicates
+// are wired.
 func (s *ServiceImpl) List(ctx context.Context, filter ClusterFilter) (*ClusterListResult, error) {
 	page, pageSize := normalizePage(filter.Page, filter.PageSize)
 
-	clusters, total, err := s.store.ListClusters(ctx, pageSize, (page-1)*pageSize, filter.OrgID, filter.Status)
-	if err != nil {
-		return nil, fmt.Errorf("query clusters: %w", err)
-	}
-
-	result := make([]*Cluster, 0, len(clusters))
-	for _, c := range clusters {
-		if matchLabels(c.Labels, filter.Labels) {
-			result = append(result, toDomainCluster(c))
-		}
-	}
+	var result []*Cluster
+	var total int
 
 	if len(filter.Labels) > 0 {
-		total = len(result)
+		// Label filter active: fetch all (no pagination), filter in memory, then paginate.
+		clusters, _, err := s.store.ListClusters(ctx, 0, 0, filter.OrgID, filter.Status)
+		if err != nil {
+			return nil, fmt.Errorf("query clusters: %w", err)
+		}
+
+		filtered := make([]*Cluster, 0, len(clusters))
+		for _, c := range clusters {
+			if matchLabels(c.Labels, filter.Labels) {
+				filtered = append(filtered, toDomainCluster(c))
+			}
+		}
+
+		total = len(filtered)
+		offset := (page - 1) * pageSize
+		if offset >= total {
+			result = []*Cluster{}
+		} else if offset+pageSize >= total {
+			result = filtered[offset:]
+		} else {
+			result = filtered[offset : offset+pageSize]
+		}
+	} else {
+		// No label filter: use SQL pagination directly.
+		clusters, t, err := s.store.ListClusters(ctx, pageSize, (page-1)*pageSize, filter.OrgID, filter.Status)
+		if err != nil {
+			return nil, fmt.Errorf("query clusters: %w", err)
+		}
+		result = make([]*Cluster, 0, len(clusters))
+		for _, c := range clusters {
+			result = append(result, toDomainCluster(c))
+		}
+		total = t
 	}
 
 	return &ClusterListResult{
@@ -248,14 +285,6 @@ func (s *ServiceImpl) Get(ctx context.Context, id string) (*Cluster, error) {
 
 // Update modifies an existing cluster.
 func (s *ServiceImpl) Update(ctx context.Context, id string, req UpdateClusterReq) (*Cluster, error) {
-	_, err := s.store.GetCluster(ctx, id)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return nil, ErrClusterNotFound
-		}
-		return nil, fmt.Errorf("get cluster for update: %w", err)
-	}
-
 	upd := s.store.UpdateClusterOne(id)
 	if req.Name != nil {
 		upd.SetName(*req.Name)
@@ -279,6 +308,9 @@ func (s *ServiceImpl) Update(ctx context.Context, id string, req UpdateClusterRe
 
 	updated, err := s.store.SaveClusterUpdate(ctx, upd)
 	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, ErrClusterNotFound
+		}
 		return nil, fmt.Errorf("update cluster: %w", err)
 	}
 
