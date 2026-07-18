@@ -4,9 +4,24 @@ run:
   timeout: 5m
 
 linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - goimports
+    - gofmt
   settings:
     goimports:
       local-prefixes:
         - github.com/whg517/fleet
-    errcheck:
-      check-type-assertions: true
+  exclusions:
+    presets:
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters: [goimports]
+        path: _test\.go
