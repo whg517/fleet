@@ -10,13 +10,21 @@ import (
 
 // Config holds all application configuration.
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Redis    RedisConfig    `mapstructure:"redis"`
-	Log      LogConfig      `mapstructure:"log"`
-	Security SecurityConfig `mapstructure:"security"`
-	OIDC     OIDCConfig     `mapstructure:"oidc"`
-	JWT      JWTConfig      `mapstructure:"jwt"`
+	App      AppConfig       `mapstructure:"app"`
+	Server   ServerConfig    `mapstructure:"server"`
+	Database DatabaseConfig  `mapstructure:"database"`
+	Redis    RedisConfig     `mapstructure:"redis"`
+	Log      LogConfig       `mapstructure:"log"`
+	Security SecurityConfig  `mapstructure:"security"`
+	OIDC     OIDCConfig      `mapstructure:"oidc"`
+	JWT      JWTConfig       `mapstructure:"jwt"`
+}
+
+// AppConfig holds application-level settings.
+type AppConfig struct {
+	// Environment controls runtime behavior. Valid values: "development", "production".
+	// In production, stricter security checks are enforced (e.g. DB sslmode).
+	Environment string `mapstructure:"environment"`
 }
 
 // SecurityConfig holds security-related settings.
@@ -65,7 +73,19 @@ type DatabaseConfig struct {
 	MaxIdleConns int    `mapstructure:"max_idle_conns"`
 }
 
-// DSN returns the PostgreSQL connection string.
+// Validate checks the configuration for environment-specific security requirements.
+func (c *Config) Validate() error {
+	if c.App.Environment == "production" {
+		if c.Database.SSLMode == "disable" || c.Database.SSLMode == "" {
+			return fmt.Errorf(
+				"database.sslmode must be 'require' or 'verify-full' in production (got %q)",
+				c.Database.SSLMode,
+			)
+		}
+	}
+	return nil
+}
+
 // DSN returns the PostgreSQL connection string for the database driver.
 func (c DatabaseConfig) DSN() string {
 	return fmt.Sprintf(
@@ -108,6 +128,7 @@ func Load(path string) (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	// Defaults
+	v.SetDefault("app.environment", "development")
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("server.read_timeout", "30s")
 	v.SetDefault("server.write_timeout", "30s")
@@ -136,6 +157,10 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
 	return &cfg, nil
