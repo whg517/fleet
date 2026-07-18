@@ -13,6 +13,7 @@ func Setup(e *echo.Echo, logger *zap.Logger) {
 
 	e.Use(echomw.RequestID())
 
+	// TODO: read allowed origins from config (server.allowed_origins) before production
 	e.Use(echomw.CORSWithConfig(echomw.CORSConfig{
 		AllowOrigins: []string{"*"},
 		AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.PATCH, echo.DELETE, echo.OPTIONS},
