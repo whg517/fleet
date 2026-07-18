@@ -29,3 +29,9 @@ web-lint:
 
 web-test:
 	cd web && npm run test -- --passWithNoTests
+
+install-hooks:
+	cp scripts/hooks/pre-commit .git/hooks/pre-commit
+	cp scripts/hooks/commit-msg .git/hooks/commit-msg
+	chmod +x .git/hooks/pre-commit .git/hooks/commit-msg
+	@echo "Git hooks installed"
