@@ -14,6 +14,14 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	Redis    RedisConfig    `mapstructure:"redis"`
 	Log      LogConfig      `mapstructure:"log"`
+	Security SecurityConfig `mapstructure:"security"`
+}
+
+// SecurityConfig holds security-related settings.
+type SecurityConfig struct {
+	// DEK is a hex-encoded 32-byte (256-bit) data encryption key used for
+	// encrypting secrets such as kubeconfigs. Inject via FLEET_SECURITY_DEK.
+	DEK string `mapstructure:"dek"`
 }
 
 // ServerConfig holds HTTP server settings.
@@ -92,6 +100,7 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("redis.db", 0)
 	v.SetDefault("log.level", "info")
 	v.SetDefault("log.encoding", "json")
+	v.SetDefault("security.dek", "")
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config: %w", err)
