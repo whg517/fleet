@@ -307,19 +307,46 @@ git worktree remove .worktree/feat/42-argocd-app-management
 
 ```
 1. 认领 Issue / 创建 Issue
-2. git checkout main && git pull
-3. git checkout -b feat/<issue#>-<desc>
-4. 开发 + 本地测试
-5. git push -u origin feat/<issue#>-<desc>
-6. gh pr create
-7. 等待 CI 通过
-8. 人工 Code Review
-9. gh pr merge <pr#> --squash --delete-branch
+2. git fetch origin && git checkout main && git pull --ff-only origin main
+3. git worktree add .worktree/<type>/<issue#>-<desc> -b <type>/<issue#>-<desc> origin/main
+4. cd .worktree/<type>/<issue#>-<desc>
+5. 开发 + 本地测试
+6. → 提交前门禁检查（见 §4.3）
+7. git add . && git commit -m "type(scope): subject"
+8. git push -u origin <type>/<issue#>-<desc>
+9. gh pr create
+10. 等待 CI 通过
+11. 人工 Code Review + 验收条件逐条核对
+12. gh pr merge <pr#> --squash --delete-branch
+13. 清理 worktree：git worktree remove .worktree/<type>/<issue#>-<desc>
 ```
 
 详见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 
-### 4.3 分支命名
+### 4.3 提交前门禁检查
+
+**push 之前必须通过以下检查，确保代码质量在本地就有保障：**
+
+| # | 检查项 | 命令 | 必须通过 |
+|---|--------|------|---------|
+| 1 | 后端 Lint | `make lint` | ✅ |
+| 2 | 后端单元测试 | `make test` | ✅ |
+| 3 | Ent 代码生成（改了 schema 时） | `make ent-gen` | ✅ |
+| 4 | DB 迁移（改了 schema 时） | `make db-migrate` | ✅ |
+| 5 | 前端构建（改了前端时） | `cd web && pnpm build` | ✅ |
+| 6 | 本地启动验证 | `make dev-server` | ✅ |
+
+```bash
+# 一键执行核心检查
+make lint && make test
+
+# 改了前端
+cd web && pnpm build && cd ..
+```
+
+> **规则**：门禁检查未全部通过，禁止 push。CI 会再跑一遍，但本地先过能节省往返时间。
+
+### 4.4 分支命名
 
 | 类型 | 格式 | 示例 |
 |------|------|------|
@@ -331,7 +358,7 @@ git worktree remove .worktree/feat/42-argocd-app-management
 
 > 禁用 `chore` 类型。
 
-### 4.4 提交规范
+### 4.5 提交规范
 
 ```
 type(scope): subject

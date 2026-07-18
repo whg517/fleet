@@ -120,6 +120,23 @@ docs(skills): 新增 developer skill
 
 ---
 
+## 提交前门禁检查
+
+**push 之前必须通过以下检查：**
+
+| # | 检查项 | 命令 | 说明 |
+|---|--------|------|------|
+| 1 | 后端 Lint | `make lint` | golangci-lint |
+| 2 | 后端测试 | `make test` | go test ./... |
+| 3 | Ent 代码生成（改了 schema 时） | `make ent-gen` | 确保 ent 代码同步 |
+| 4 | DB 迁移（改了 schema 时） | `make db-migrate` | atlas migrate |
+| 5 | 前端构建（改了前端时） | `cd web && pnpm build` | TypeScript 编译 |
+| 6 | 本地启动验证 | `make dev-server` | 服务能正常启动 |
+
+> 门禁检查未全部通过，禁止 push。
+
+---
+
 ## PR 流程
 
 ```bash
