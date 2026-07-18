@@ -4,8 +4,10 @@ go 1.26
 
 require (
 	entgo.io/ent v0.14.5
+	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.15.0
 	github.com/lib/pq v1.10.9
+	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/redis/go-redis/v9 v9.12.0
 	github.com/spf13/viper v1.20.1
 	go.uber.org/zap v1.27.0
@@ -22,7 +24,6 @@ require (
 	github.com/go-openapi/inflect v0.19.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/hcl/v2 v2.18.1 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect

@@ -38,3 +38,4 @@ node_modules/
 # OpenClaw workspace files
 .sopenclaw/
 # .claude/ 目录入库（项目级 skill 团队共享）
+server
