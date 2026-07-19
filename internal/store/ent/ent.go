@@ -18,6 +18,7 @@ import (
 	"github.com/whg517/fleet/internal/store/ent/organization"
 	"github.com/whg517/fleet/internal/store/ent/registry"
 	"github.com/whg517/fleet/internal/store/ent/role"
+	"github.com/whg517/fleet/internal/store/ent/systemsetting"
 	"github.com/whg517/fleet/internal/store/ent/user"
 )
 
@@ -79,13 +80,14 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			auditlog.Table:     auditlog.ValidColumn,
-			cluster.Table:      cluster.ValidColumn,
-			environment.Table:  environment.ValidColumn,
-			organization.Table: organization.ValidColumn,
-			registry.Table:     registry.ValidColumn,
-			role.Table:         role.ValidColumn,
-			user.Table:         user.ValidColumn,
+			auditlog.Table:      auditlog.ValidColumn,
+			cluster.Table:       cluster.ValidColumn,
+			environment.Table:   environment.ValidColumn,
+			organization.Table:  organization.ValidColumn,
+			registry.Table:      registry.ValidColumn,
+			role.Table:          role.ValidColumn,
+			systemsetting.Table: systemsetting.ValidColumn,
+			user.Table:          user.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

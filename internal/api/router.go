@@ -1,6 +1,9 @@
 package api
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -12,6 +15,7 @@ import (
 	"github.com/whg517/fleet/internal/domain/auth"
 	"github.com/whg517/fleet/internal/domain/cluster"
 	"github.com/whg517/fleet/internal/domain/rbac"
+	sysdomain "github.com/whg517/fleet/internal/domain/system"
 	"github.com/whg517/fleet/internal/infra/config"
 	"github.com/whg517/fleet/internal/infra/secrets"
 	entclient "github.com/whg517/fleet/internal/store/ent"
@@ -110,6 +114,33 @@ func registerRoutes(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Cl
 		} else {
 			v1.GET("/environments", clusterH.ListAllEnvironments)
 		}
+
+		// System settings management
+		sysStore := sysdomain.NewEntStore(entClient)
+		healthChecker := &infraHealthChecker{dbDriver: dbDriver, redisClient: redisClient}
+		sysSvc := sysdomain.NewService(sysStore, healthChecker, dek, logger)
+		sysH := handler.NewSystemHandler(sysSvc)
+
+		// Health-check is public (no auth required)
+		public.GET("/system/health-check", sysH.HealthCheck)
+
+		// Settings reads: any authenticated user
+		var sysReadMW []echo.MiddlewareFunc
+		if rbacMW != nil {
+			sysReadMW = append(sysReadMW, rbacMW)
+		}
+		sysGroup := v1.Group("/system", sysReadMW...)
+		sysGroup.GET("/settings", sysH.ListSettings)
+		sysGroup.GET("/settings/:key", sysH.GetSetting)
+
+		// Settings writes: admin-only
+		sysAdminMW := []echo.MiddlewareFunc{middleware.RequireRole("admin", logger)}
+		if rbacMW != nil {
+			sysAdminMW = append([]echo.MiddlewareFunc{rbacMW}, sysAdminMW...)
+		}
+		sysAdmin := v1.Group("/system", sysAdminMW...)
+		sysAdmin.PUT("/settings/:key", sysH.SetSetting)
+		sysAdmin.DELETE("/settings/:key", sysH.DeleteSetting)
 	}
 
 	// RBAC management endpoints (protected + admin-only for mutations)
@@ -169,4 +200,24 @@ func RegisterRoutesWithDeps(e *echo.Echo, deps Deps) {
 
 	// Protected auth endpoint
 	authGroup.GET("/me", authH.Me, middleware.AuthMiddleware(sessionMgr, deps.Logger))
+}
+
+// infraHealthChecker adapts DB and Redis clients to the system.HealthChecker interface.
+type infraHealthChecker struct {
+	dbDriver    *entsql.Driver
+	redisClient *redis.Client
+}
+
+func (h *infraHealthChecker) PingDB(ctx context.Context) error {
+	if h.dbDriver == nil {
+		return fmt.Errorf("db driver not configured")
+	}
+	return h.dbDriver.DB().PingContext(ctx)
+}
+
+func (h *infraHealthChecker) PingRedis(ctx context.Context) error {
+	if h.redisClient == nil {
+		return fmt.Errorf("redis client not configured")
+	}
+	return h.redisClient.Ping(ctx).Err()
 }
