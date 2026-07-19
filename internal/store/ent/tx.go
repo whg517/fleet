@@ -24,6 +24,8 @@ type Tx struct {
 	Registry *RegistryClient
 	// Role is the client for interacting with the Role builders.
 	Role *RoleClient
+	// SystemSetting is the client for interacting with the SystemSetting builders.
+	SystemSetting *SystemSettingClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 
@@ -163,6 +165,7 @@ func (tx *Tx) init() {
 	tx.Organization = NewOrganizationClient(tx.config)
 	tx.Registry = NewRegistryClient(tx.config)
 	tx.Role = NewRoleClient(tx.config)
+	tx.SystemSetting = NewSystemSettingClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 }
 

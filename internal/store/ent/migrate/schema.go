@@ -223,6 +223,41 @@ var (
 		Columns:    RolesColumns,
 		PrimaryKey: []*schema.Column{RolesColumns[0]},
 	}
+	// SystemSettingsColumns holds the columns for the "system_settings" table.
+	SystemSettingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "key", Type: field.TypeString},
+		{Name: "value", Type: field.TypeString, Default: ""},
+		{Name: "encrypted", Type: field.TypeBool, Default: false},
+		{Name: "category", Type: field.TypeEnum, Enums: []string{"argocd", "harbor", "git", "notification", "general"}, Default: "general"},
+		{Name: "description", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SystemSettingsTable holds the schema information for the "system_settings" table.
+	SystemSettingsTable = &schema.Table{
+		Name:       "system_settings",
+		Columns:    SystemSettingsColumns,
+		PrimaryKey: []*schema.Column{SystemSettingsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "systemsetting_org_id",
+				Unique:  false,
+				Columns: []*schema.Column{SystemSettingsColumns[1]},
+			},
+			{
+				Name:    "systemsetting_category",
+				Unique:  false,
+				Columns: []*schema.Column{SystemSettingsColumns[5]},
+			},
+			{
+				Name:    "systemsetting_key",
+				Unique:  false,
+				Columns: []*schema.Column{SystemSettingsColumns[2]},
+			},
+		},
+	}
 	// UsersColumns holds the columns for the "users" table.
 	UsersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -278,6 +313,7 @@ var (
 		OrganizationsTable,
 		RegistriesTable,
 		RolesTable,
+		SystemSettingsTable,
 		UsersTable,
 	}
 )

@@ -7,6 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/whg517/fleet/internal/domain/cluster"
+	syserrs "github.com/whg517/fleet/internal/domain/system"
 )
 
 // APIError represents a structured error response.
@@ -50,6 +51,28 @@ func errorResponse(c echo.Context, err error) error {
 			"error": {Code: "NOT_FOUND", Message: "environment not found"},
 		})
 	case errors.Is(err, cluster.ErrInvalidInput):
+		return c.JSON(http.StatusBadRequest, map[string]APIError{
+			"error": {Code: "INVALID_INPUT", Message: err.Error()},
+		})
+	default:
+		return c.JSON(http.StatusInternalServerError, map[string]APIError{
+			"error": {Code: "INTERNAL", Message: "internal server error"},
+		})
+	}
+}
+
+// systemErrorResponse maps system-setting domain errors to HTTP responses.
+func systemErrorResponse(c echo.Context, err error) error {
+	switch {
+	case errors.Is(err, syserrs.ErrSettingNotFound):
+		return c.JSON(http.StatusNotFound, map[string]APIError{
+			"error": {Code: "NOT_FOUND", Message: "setting not found"},
+		})
+	case errors.Is(err, syserrs.ErrSettingAlreadyExists):
+		return c.JSON(http.StatusConflict, map[string]APIError{
+			"error": {Code: "CONFLICT", Message: "setting already exists"},
+		})
+	case errors.Is(err, syserrs.ErrInvalidInput):
 		return c.JSON(http.StatusBadRequest, map[string]APIError{
 			"error": {Code: "INVALID_INPUT", Message: err.Error()},
 		})

@@ -11,6 +11,7 @@ import (
 	"github.com/whg517/fleet/internal/store/ent/organization"
 	"github.com/whg517/fleet/internal/store/ent/registry"
 	"github.com/whg517/fleet/internal/store/ent/schema"
+	"github.com/whg517/fleet/internal/store/ent/systemsetting"
 	"github.com/whg517/fleet/internal/store/ent/user"
 )
 
@@ -104,6 +105,30 @@ func init() {
 	registry.DefaultUpdatedAt = registryDescUpdatedAt.Default.(func() time.Time)
 	// registry.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	registry.UpdateDefaultUpdatedAt = registryDescUpdatedAt.UpdateDefault.(func() time.Time)
+	systemsettingFields := schema.SystemSetting{}.Fields()
+	_ = systemsettingFields
+	// systemsettingDescKey is the schema descriptor for key field.
+	systemsettingDescKey := systemsettingFields[2].Descriptor()
+	// systemsetting.KeyValidator is a validator for the "key" field. It is called by the builders before save.
+	systemsetting.KeyValidator = systemsettingDescKey.Validators[0].(func(string) error)
+	// systemsettingDescValue is the schema descriptor for value field.
+	systemsettingDescValue := systemsettingFields[3].Descriptor()
+	// systemsetting.DefaultValue holds the default value on creation for the value field.
+	systemsetting.DefaultValue = systemsettingDescValue.Default.(string)
+	// systemsettingDescEncrypted is the schema descriptor for encrypted field.
+	systemsettingDescEncrypted := systemsettingFields[4].Descriptor()
+	// systemsetting.DefaultEncrypted holds the default value on creation for the encrypted field.
+	systemsetting.DefaultEncrypted = systemsettingDescEncrypted.Default.(bool)
+	// systemsettingDescCreatedAt is the schema descriptor for created_at field.
+	systemsettingDescCreatedAt := systemsettingFields[7].Descriptor()
+	// systemsetting.DefaultCreatedAt holds the default value on creation for the created_at field.
+	systemsetting.DefaultCreatedAt = systemsettingDescCreatedAt.Default.(func() time.Time)
+	// systemsettingDescUpdatedAt is the schema descriptor for updated_at field.
+	systemsettingDescUpdatedAt := systemsettingFields[8].Descriptor()
+	// systemsetting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	systemsetting.DefaultUpdatedAt = systemsettingDescUpdatedAt.Default.(func() time.Time)
+	// systemsetting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	systemsetting.UpdateDefaultUpdatedAt = systemsettingDescUpdatedAt.UpdateDefault.(func() time.Time)
 	userFields := schema.User{}.Fields()
 	_ = userFields
 	// userDescName is the schema descriptor for name field.
