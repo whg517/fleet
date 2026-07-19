@@ -17,6 +17,7 @@ import (
 	"github.com/whg517/fleet/internal/store/ent/organization"
 	"github.com/whg517/fleet/internal/store/ent/predicate"
 	"github.com/whg517/fleet/internal/store/ent/registry"
+	"github.com/whg517/fleet/internal/store/ent/service"
 	"github.com/whg517/fleet/internal/store/ent/user"
 )
 
@@ -31,6 +32,7 @@ type OrganizationQuery struct {
 	withClusters     *ClusterQuery
 	withEnvironments *EnvironmentQuery
 	withRegistries   *RegistryQuery
+	withServices     *ServiceQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -148,6 +150,28 @@ func (_q *OrganizationQuery) QueryRegistries() *RegistryQuery {
 			sqlgraph.From(organization.Table, organization.FieldID, selector),
 			sqlgraph.To(registry.Table, registry.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, organization.RegistriesTable, organization.RegistriesColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryServices chains the current query on the "services" edge.
+func (_q *OrganizationQuery) QueryServices() *ServiceQuery {
+	query := (&ServiceClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(organization.Table, organization.FieldID, selector),
+			sqlgraph.To(service.Table, service.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, organization.ServicesTable, organization.ServicesColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -351,6 +375,7 @@ func (_q *OrganizationQuery) Clone() *OrganizationQuery {
 		withClusters:     _q.withClusters.Clone(),
 		withEnvironments: _q.withEnvironments.Clone(),
 		withRegistries:   _q.withRegistries.Clone(),
+		withServices:     _q.withServices.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -398,6 +423,17 @@ func (_q *OrganizationQuery) WithRegistries(opts ...func(*RegistryQuery)) *Organ
 		opt(query)
 	}
 	_q.withRegistries = query
+	return _q
+}
+
+// WithServices tells the query-builder to eager-load the nodes that are connected to
+// the "services" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *OrganizationQuery) WithServices(opts ...func(*ServiceQuery)) *OrganizationQuery {
+	query := (&ServiceClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withServices = query
 	return _q
 }
 
@@ -479,11 +515,12 @@ func (_q *OrganizationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 	var (
 		nodes       = []*Organization{}
 		_spec       = _q.querySpec()
-		loadedTypes = [4]bool{
+		loadedTypes = [5]bool{
 			_q.withUsers != nil,
 			_q.withClusters != nil,
 			_q.withEnvironments != nil,
 			_q.withRegistries != nil,
+			_q.withServices != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -529,6 +566,13 @@ func (_q *OrganizationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 		if err := _q.loadRegistries(ctx, query, nodes,
 			func(n *Organization) { n.Edges.Registries = []*Registry{} },
 			func(n *Organization, e *Registry) { n.Edges.Registries = append(n.Edges.Registries, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withServices; query != nil {
+		if err := _q.loadServices(ctx, query, nodes,
+			func(n *Organization) { n.Edges.Services = []*Service{} },
+			func(n *Organization, e *Service) { n.Edges.Services = append(n.Edges.Services, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -640,6 +684,36 @@ func (_q *OrganizationQuery) loadRegistries(ctx context.Context, query *Registry
 	}
 	query.Where(predicate.Registry(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(organization.RegistriesColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.OrgID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "org_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *OrganizationQuery) loadServices(ctx context.Context, query *ServiceQuery, nodes []*Organization, init func(*Organization), assign func(*Organization, *Service)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*Organization)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(service.FieldOrgID)
+	}
+	query.Where(predicate.Service(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(organization.ServicesColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

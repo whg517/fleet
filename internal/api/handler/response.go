@@ -7,6 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/whg517/fleet/internal/domain/cluster"
+	svcerrs "github.com/whg517/fleet/internal/domain/service"
 	syserrs "github.com/whg517/fleet/internal/domain/system"
 )
 
@@ -51,6 +52,28 @@ func errorResponse(c echo.Context, err error) error {
 			"error": {Code: "NOT_FOUND", Message: "environment not found"},
 		})
 	case errors.Is(err, cluster.ErrInvalidInput):
+		return c.JSON(http.StatusBadRequest, map[string]APIError{
+			"error": {Code: "INVALID_INPUT", Message: err.Error()},
+		})
+	default:
+		return c.JSON(http.StatusInternalServerError, map[string]APIError{
+			"error": {Code: "INTERNAL", Message: "internal server error"},
+		})
+	}
+}
+
+// serviceErrorResponse maps service domain errors to HTTP responses.
+func serviceErrorResponse(c echo.Context, err error) error {
+	switch {
+	case errors.Is(err, svcerrs.ErrServiceNotFound):
+		return c.JSON(http.StatusNotFound, map[string]APIError{
+			"error": {Code: "NOT_FOUND", Message: "service not found"},
+		})
+	case errors.Is(err, svcerrs.ErrServiceAlreadyExists):
+		return c.JSON(http.StatusConflict, map[string]APIError{
+			"error": {Code: "CONFLICT", Message: "service already exists"},
+		})
+	case errors.Is(err, svcerrs.ErrInvalidInput):
 		return c.JSON(http.StatusBadRequest, map[string]APIError{
 			"error": {Code: "INVALID_INPUT", Message: err.Error()},
 		})

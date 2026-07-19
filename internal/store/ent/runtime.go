@@ -11,6 +11,7 @@ import (
 	"github.com/whg517/fleet/internal/store/ent/organization"
 	"github.com/whg517/fleet/internal/store/ent/registry"
 	"github.com/whg517/fleet/internal/store/ent/schema"
+	"github.com/whg517/fleet/internal/store/ent/service"
 	"github.com/whg517/fleet/internal/store/ent/systemsetting"
 	"github.com/whg517/fleet/internal/store/ent/user"
 )
@@ -105,6 +106,22 @@ func init() {
 	registry.DefaultUpdatedAt = registryDescUpdatedAt.Default.(func() time.Time)
 	// registry.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	registry.UpdateDefaultUpdatedAt = registryDescUpdatedAt.UpdateDefault.(func() time.Time)
+	serviceFields := schema.Service{}.Fields()
+	_ = serviceFields
+	// serviceDescName is the schema descriptor for name field.
+	serviceDescName := serviceFields[2].Descriptor()
+	// service.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	service.NameValidator = serviceDescName.Validators[0].(func(string) error)
+	// serviceDescCreatedAt is the schema descriptor for created_at field.
+	serviceDescCreatedAt := serviceFields[9].Descriptor()
+	// service.DefaultCreatedAt holds the default value on creation for the created_at field.
+	service.DefaultCreatedAt = serviceDescCreatedAt.Default.(func() time.Time)
+	// serviceDescUpdatedAt is the schema descriptor for updated_at field.
+	serviceDescUpdatedAt := serviceFields[10].Descriptor()
+	// service.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	service.DefaultUpdatedAt = serviceDescUpdatedAt.Default.(func() time.Time)
+	// service.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	service.UpdateDefaultUpdatedAt = serviceDescUpdatedAt.UpdateDefault.(func() time.Time)
 	systemsettingFields := schema.SystemSetting{}.Fields()
 	_ = systemsettingFields
 	// systemsettingDescKey is the schema descriptor for key field.

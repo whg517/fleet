@@ -45,9 +45,11 @@ type OrganizationEdges struct {
 	Environments []*Environment `json:"environments,omitempty"`
 	// Registries holds the value of the registries edge.
 	Registries []*Registry `json:"registries,omitempty"`
+	// Services holds the value of the services edge.
+	Services []*Service `json:"services,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [4]bool
+	loadedTypes [5]bool
 }
 
 // UsersOrErr returns the Users value or an error if the edge
@@ -84,6 +86,15 @@ func (e OrganizationEdges) RegistriesOrErr() ([]*Registry, error) {
 		return e.Registries, nil
 	}
 	return nil, &NotLoadedError{edge: "registries"}
+}
+
+// ServicesOrErr returns the Services value or an error if the edge
+// was not loaded in eager-loading.
+func (e OrganizationEdges) ServicesOrErr() ([]*Service, error) {
+	if e.loadedTypes[4] {
+		return e.Services, nil
+	}
+	return nil, &NotLoadedError{edge: "services"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -183,6 +194,11 @@ func (_m *Organization) QueryEnvironments() *EnvironmentQuery {
 // QueryRegistries queries the "registries" edge of the Organization entity.
 func (_m *Organization) QueryRegistries() *RegistryQuery {
 	return NewOrganizationClient(_m.config).QueryRegistries(_m)
+}
+
+// QueryServices queries the "services" edge of the Organization entity.
+func (_m *Organization) QueryServices() *ServiceQuery {
+	return NewOrganizationClient(_m.config).QueryServices(_m)
 }
 
 // Update returns a builder for updating this Organization.

@@ -15,6 +15,7 @@ import (
 	"github.com/whg517/fleet/internal/domain/auth"
 	"github.com/whg517/fleet/internal/domain/cluster"
 	"github.com/whg517/fleet/internal/domain/rbac"
+	"github.com/whg517/fleet/internal/domain/service"
 	sysdomain "github.com/whg517/fleet/internal/domain/system"
 	"github.com/whg517/fleet/internal/infra/config"
 	"github.com/whg517/fleet/internal/infra/secrets"
@@ -114,6 +115,22 @@ func registerRoutes(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Cl
 		} else {
 			v1.GET("/environments", clusterH.ListAllEnvironments)
 		}
+
+		// Service catalog management
+		svcStore := service.NewEntStore(entClient)
+		serviceSvc := service.NewService(svcStore, logger)
+		serviceH := handler.NewServiceHandler(serviceSvc)
+
+		var svcMW []echo.MiddlewareFunc
+		if rbacMW != nil {
+			svcMW = append(svcMW, rbacMW)
+		}
+		services := v1.Group("/services", svcMW...)
+		services.POST("", serviceH.Create)
+		services.GET("", serviceH.List)
+		services.GET("/:id", serviceH.Get)
+		services.PUT("/:id", serviceH.Update)
+		services.DELETE("/:id", serviceH.Delete)
 
 		// System settings management
 		sysStore := sysdomain.NewEntStore(entClient)

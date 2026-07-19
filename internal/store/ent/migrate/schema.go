@@ -223,6 +223,61 @@ var (
 		Columns:    RolesColumns,
 		PrimaryKey: []*schema.Column{RolesColumns[0]},
 	}
+	// ServicesColumns holds the columns for the "services" table.
+	ServicesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "name", Type: field.TypeString},
+		{Name: "team", Type: field.TypeString, Nullable: true},
+		{Name: "description", Type: field.TypeString, Nullable: true},
+		{Name: "labels", Type: field.TypeJSON, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "archived"}, Default: "active"},
+		{Name: "harbor_project", Type: field.TypeString, Nullable: true},
+		{Name: "git_repo", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+	}
+	// ServicesTable holds the schema information for the "services" table.
+	ServicesTable = &schema.Table{
+		Name:       "services",
+		Columns:    ServicesColumns,
+		PrimaryKey: []*schema.Column{ServicesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "services_organizations_services",
+				Columns:    []*schema.Column{ServicesColumns[10]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "service_org_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{ServicesColumns[10], ServicesColumns[1]},
+			},
+			{
+				Name:    "service_org_id",
+				Unique:  false,
+				Columns: []*schema.Column{ServicesColumns[10]},
+			},
+			{
+				Name:    "service_name",
+				Unique:  false,
+				Columns: []*schema.Column{ServicesColumns[1]},
+			},
+			{
+				Name:    "service_team",
+				Unique:  false,
+				Columns: []*schema.Column{ServicesColumns[2]},
+			},
+			{
+				Name:    "service_status",
+				Unique:  false,
+				Columns: []*schema.Column{ServicesColumns[5]},
+			},
+		},
+	}
 	// SystemSettingsColumns holds the columns for the "system_settings" table.
 	SystemSettingsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -313,6 +368,7 @@ var (
 		OrganizationsTable,
 		RegistriesTable,
 		RolesTable,
+		ServicesTable,
 		SystemSettingsTable,
 		UsersTable,
 	}
@@ -323,5 +379,6 @@ func init() {
 	EnvironmentsTable.ForeignKeys[0].RefTable = ClustersTable
 	EnvironmentsTable.ForeignKeys[1].RefTable = OrganizationsTable
 	RegistriesTable.ForeignKeys[0].RefTable = OrganizationsTable
+	ServicesTable.ForeignKeys[0].RefTable = OrganizationsTable
 	UsersTable.ForeignKeys[0].RefTable = OrganizationsTable
 }
