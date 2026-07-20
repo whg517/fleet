@@ -17,6 +17,7 @@ import (
 	"github.com/whg517/fleet/internal/domain/rbac"
 	"github.com/whg517/fleet/internal/domain/service"
 	sysdomain "github.com/whg517/fleet/internal/domain/system"
+	"github.com/whg517/fleet/internal/domain/template"
 	"github.com/whg517/fleet/internal/infra/config"
 	"github.com/whg517/fleet/internal/infra/secrets"
 	entclient "github.com/whg517/fleet/internal/store/ent"
@@ -131,6 +132,25 @@ func registerRoutes(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Cl
 		services.GET("/:id", serviceH.Get)
 		services.PUT("/:id", serviceH.Update)
 		services.DELETE("/:id", serviceH.Delete)
+
+		// Template management
+		tmplStore := template.NewEntStore(entClient)
+		tmplSvc := template.NewService(tmplStore, logger)
+		tmplH := handler.NewTemplateHandler(tmplSvc)
+
+		var tmplMW []echo.MiddlewareFunc
+		if rbacMW != nil {
+			tmplMW = append(tmplMW, rbacMW)
+		}
+		templates := v1.Group("/templates", tmplMW...)
+		templates.POST("", tmplH.Create)
+		templates.GET("", tmplH.List)
+		templates.GET("/:id", tmplH.Get)
+		templates.PUT("/:id", tmplH.Update)
+		templates.DELETE("/:id", tmplH.Delete)
+		templates.POST("/:id/versions", tmplH.PublishVersion)
+		templates.GET("/:id/versions", tmplH.ListVersions)
+		templates.POST("/:id/versions/:ver/archive", tmplH.ArchiveVersion)
 
 		// System settings management
 		sysStore := sysdomain.NewEntStore(entClient)

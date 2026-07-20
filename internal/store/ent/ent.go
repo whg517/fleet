@@ -20,6 +20,8 @@ import (
 	"github.com/whg517/fleet/internal/store/ent/role"
 	"github.com/whg517/fleet/internal/store/ent/service"
 	"github.com/whg517/fleet/internal/store/ent/systemsetting"
+	"github.com/whg517/fleet/internal/store/ent/template"
+	"github.com/whg517/fleet/internal/store/ent/templateversion"
 	"github.com/whg517/fleet/internal/store/ent/user"
 )
 
@@ -81,15 +83,17 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			auditlog.Table:      auditlog.ValidColumn,
-			cluster.Table:       cluster.ValidColumn,
-			environment.Table:   environment.ValidColumn,
-			organization.Table:  organization.ValidColumn,
-			registry.Table:      registry.ValidColumn,
-			role.Table:          role.ValidColumn,
-			service.Table:       service.ValidColumn,
-			systemsetting.Table: systemsetting.ValidColumn,
-			user.Table:          user.ValidColumn,
+			auditlog.Table:        auditlog.ValidColumn,
+			cluster.Table:         cluster.ValidColumn,
+			environment.Table:     environment.ValidColumn,
+			organization.Table:    organization.ValidColumn,
+			registry.Table:        registry.ValidColumn,
+			role.Table:            role.ValidColumn,
+			service.Table:         service.ValidColumn,
+			systemsetting.Table:   systemsetting.ValidColumn,
+			template.Table:        template.ValidColumn,
+			templateversion.Table: templateversion.ValidColumn,
+			user.Table:            user.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

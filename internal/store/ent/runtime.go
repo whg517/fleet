@@ -13,6 +13,8 @@ import (
 	"github.com/whg517/fleet/internal/store/ent/schema"
 	"github.com/whg517/fleet/internal/store/ent/service"
 	"github.com/whg517/fleet/internal/store/ent/systemsetting"
+	"github.com/whg517/fleet/internal/store/ent/template"
+	"github.com/whg517/fleet/internal/store/ent/templateversion"
 	"github.com/whg517/fleet/internal/store/ent/user"
 )
 
@@ -146,6 +148,32 @@ func init() {
 	systemsetting.DefaultUpdatedAt = systemsettingDescUpdatedAt.Default.(func() time.Time)
 	// systemsetting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	systemsetting.UpdateDefaultUpdatedAt = systemsettingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	templateFields := schema.Template{}.Fields()
+	_ = templateFields
+	// templateDescName is the schema descriptor for name field.
+	templateDescName := templateFields[2].Descriptor()
+	// template.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	template.NameValidator = templateDescName.Validators[0].(func(string) error)
+	// templateDescCreatedAt is the schema descriptor for created_at field.
+	templateDescCreatedAt := templateFields[9].Descriptor()
+	// template.DefaultCreatedAt holds the default value on creation for the created_at field.
+	template.DefaultCreatedAt = templateDescCreatedAt.Default.(func() time.Time)
+	// templateDescUpdatedAt is the schema descriptor for updated_at field.
+	templateDescUpdatedAt := templateFields[10].Descriptor()
+	// template.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	template.DefaultUpdatedAt = templateDescUpdatedAt.Default.(func() time.Time)
+	// template.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	template.UpdateDefaultUpdatedAt = templateDescUpdatedAt.UpdateDefault.(func() time.Time)
+	templateversionFields := schema.TemplateVersion{}.Fields()
+	_ = templateversionFields
+	// templateversionDescVersion is the schema descriptor for version field.
+	templateversionDescVersion := templateversionFields[2].Descriptor()
+	// templateversion.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	templateversion.VersionValidator = templateversionDescVersion.Validators[0].(func(string) error)
+	// templateversionDescCreatedAt is the schema descriptor for created_at field.
+	templateversionDescCreatedAt := templateversionFields[7].Descriptor()
+	// templateversion.DefaultCreatedAt holds the default value on creation for the created_at field.
+	templateversion.DefaultCreatedAt = templateversionDescCreatedAt.Default.(func() time.Time)
 	userFields := schema.User{}.Fields()
 	_ = userFields
 	// userDescName is the schema descriptor for name field.
