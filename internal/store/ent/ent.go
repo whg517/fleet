@@ -18,6 +18,7 @@ import (
 	"github.com/whg517/fleet/internal/store/ent/organization"
 	"github.com/whg517/fleet/internal/store/ent/registry"
 	"github.com/whg517/fleet/internal/store/ent/role"
+	"github.com/whg517/fleet/internal/store/ent/service"
 	"github.com/whg517/fleet/internal/store/ent/systemsetting"
 	"github.com/whg517/fleet/internal/store/ent/user"
 )
@@ -86,6 +87,7 @@ func checkColumn(t, c string) error {
 			organization.Table:  organization.ValidColumn,
 			registry.Table:      registry.ValidColumn,
 			role.Table:          role.ValidColumn,
+			service.Table:       service.ValidColumn,
 			systemsetting.Table: systemsetting.ValidColumn,
 			user.Table:          user.ValidColumn,
 		})

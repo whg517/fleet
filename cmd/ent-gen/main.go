@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	if err := entc.Generate("./internal/store/ent/schema", &gen.Config{}, entc.TemplateDir("")); err != nil {
+	if err := entc.Generate("./internal/store/ent/schema", &gen.Config{}); err != nil {
 		log.Fatalf("running ent codegen: %v", err)
 	}
 }

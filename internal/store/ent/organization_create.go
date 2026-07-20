@@ -14,6 +14,7 @@ import (
 	"github.com/whg517/fleet/internal/store/ent/environment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
 	"github.com/whg517/fleet/internal/store/ent/registry"
+	"github.com/whg517/fleet/internal/store/ent/service"
 	"github.com/whg517/fleet/internal/store/ent/user"
 )
 
@@ -156,6 +157,21 @@ func (_c *OrganizationCreate) AddRegistries(v ...*Registry) *OrganizationCreate 
 		ids[i] = v[i].ID
 	}
 	return _c.AddRegistryIDs(ids...)
+}
+
+// AddServiceIDs adds the "services" edge to the Service entity by IDs.
+func (_c *OrganizationCreate) AddServiceIDs(ids ...string) *OrganizationCreate {
+	_c.mutation.AddServiceIDs(ids...)
+	return _c
+}
+
+// AddServices adds the "services" edges to the Service entity.
+func (_c *OrganizationCreate) AddServices(v ...*Service) *OrganizationCreate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddServiceIDs(ids...)
 }
 
 // Mutation returns the OrganizationMutation object of the builder.
@@ -350,6 +366,22 @@ func (_c *OrganizationCreate) createSpec() (*Organization, *sqlgraph.CreateSpec)
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(registry.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ServicesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   organization.ServicesTable,
+			Columns: []string{organization.ServicesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(service.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

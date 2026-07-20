@@ -24,6 +24,9 @@ type Registry func(*sql.Selector)
 // Role is the predicate function for role builders.
 type Role func(*sql.Selector)
 
+// Service is the predicate function for service builders.
+type Service func(*sql.Selector)
+
 // SystemSetting is the predicate function for systemsetting builders.
 type SystemSetting func(*sql.Selector)
 
