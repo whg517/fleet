@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	neturl "net/url"
 	"strings"
 
 	"github.com/google/uuid"
@@ -117,7 +118,32 @@ func validateCreateReq(req CreateServiceReq) error {
 	if strings.TrimSpace(req.Name) == "" {
 		return fmt.Errorf("%w: name is required", ErrInvalidInput)
 	}
+	if len(req.Name) > 128 {
+		return fmt.Errorf("%w: name must be at most 128 characters", ErrInvalidInput)
+	}
+	if len(req.Description) > 1024 {
+		return fmt.Errorf("%w: description must be at most 1024 characters", ErrInvalidInput)
+	}
+	if len(req.Team) > 64 {
+		return fmt.Errorf("%w: team must be at most 64 characters", ErrInvalidInput)
+	}
+	if req.GitRepo != "" && !isValidURL(req.GitRepo) {
+		return fmt.Errorf("%w: git_repo must be a valid URL", ErrInvalidInput)
+	}
+	if len(req.Labels) > 50 {
+		return fmt.Errorf("%w: labels must have at most 50 entries", ErrInvalidInput)
+	}
+	for k, v := range req.Labels {
+		if len(k) > 64 || len(v) > 256 {
+			return fmt.Errorf("%w: label key/value too long (key≤64, value≤256)", ErrInvalidInput)
+		}
+	}
 	return nil
+}
+
+func isValidURL(s string) bool {
+	u, err := neturl.Parse(s)
+	return err == nil && u.Scheme != "" && u.Host != ""
 }
 
 // Create registers a new service in the catalog.
@@ -157,6 +183,12 @@ func (s *ServiceImpl) Create(ctx context.Context, req CreateServiceReq) (*Servic
 	sv, err := s.store.SaveService(ctx, builder)
 	if err != nil {
 		if ent.IsConstraintError(err) {
+			errMsg := err.Error()
+			// FK violation: org_id references a non-existent organization
+			if strings.Contains(errMsg, "FOREIGN KEY constraint failed") {
+				return nil, fmt.Errorf("%w: organization not found", ErrInvalidInput)
+			}
+			// Unique constraint: (org_id, name) already exists
 			return nil, ErrServiceAlreadyExists
 		}
 		return nil, fmt.Errorf("create service: %w", err)
@@ -182,8 +214,11 @@ func (s *ServiceImpl) List(ctx context.Context, filter ServiceFilter) (*ServiceL
 	var result []*ServiceEntry
 	var total int
 
+	// TODO: 当 ent 支持 JSON 谓词查询后，将 label 过滤下推到 SQL 层。
+	// 当前方案在 label 过滤时全量拉取后内存过滤，设置上限防止滥用。
+	const maxLabelScanLimit = 5000
 	if len(filter.Labels) > 0 {
-		services, _, err := s.store.ListServices(ctx, 0, 0, filter.OrgID, filter.Team, filter.Status, filter.Name)
+		services, _, err := s.store.ListServices(ctx, maxLabelScanLimit, 0, filter.OrgID, filter.Team, filter.Status, filter.Name)
 		if err != nil {
 			return nil, fmt.Errorf("query services: %w", err)
 		}
@@ -238,7 +273,20 @@ func (s *ServiceImpl) Get(ctx context.Context, id string) (*ServiceEntry, error)
 }
 
 // Update modifies an existing service.
+// Archived services cannot be updated.
 func (s *ServiceImpl) Update(ctx context.Context, id string, req UpdateServiceReq) (*ServiceEntry, error) {
+	// Check current status first
+	existing, err := s.store.GetService(ctx, id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, ErrServiceNotFound
+		}
+		return nil, fmt.Errorf("get service for update: %w", err)
+	}
+	if existing.Status == entservice.StatusArchived {
+		return nil, fmt.Errorf("%w: cannot update archived service", ErrInvalidInput)
+	}
+
 	upd := s.store.UpdateServiceOne(id)
 	if req.Name != nil {
 		upd.SetName(*req.Name)

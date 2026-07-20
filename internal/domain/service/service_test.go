@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -193,7 +194,7 @@ func TestListServices_NameSearch(t *testing.T) {
 		t.Fatalf("got %d services, want 2", len(result.Services))
 	}
 	for _, s := range result.Services {
-		if !contains(s.Name, "payment") {
+		if !strings.Contains(s.Name, "payment") {
 			t.Errorf("Name %q does not contain 'payment'", s.Name)
 		}
 	}
@@ -340,6 +341,25 @@ func TestDeleteService_NotFound(t *testing.T) {
 	}
 }
 
+func TestUpdateService_ArchivedRejected(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+
+	s, _ := svc.Create(ctx, CreateServiceReq{Name: "to-archive"})
+
+	// Archive it
+	if err := svc.Delete(ctx, s.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	// Attempt update on archived service should fail
+	newName := "should-fail"
+	_, err := svc.Update(ctx, s.ID, UpdateServiceReq{Name: &newName})
+	if err == nil {
+		t.Fatal("expected error updating archived service, got nil")
+	}
+}
+
 func TestNormalizePage(t *testing.T) {
 	tests := []struct {
 		page, pageSize, wantPage, wantPageSize int
@@ -384,15 +404,3 @@ func TestMatchLabels(t *testing.T) {
 	}
 }
 
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || (len(substr) > 0 && stringContains(s, substr)))
-}
-
-func stringContains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
