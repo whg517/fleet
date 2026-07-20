@@ -313,6 +313,98 @@ var (
 			},
 		},
 	}
+	// TemplatesColumns holds the columns for the "templates" table.
+	TemplatesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "name", Type: field.TypeString},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"build", "deploy_k8s", "deploy_vm"}, Default: "deploy_k8s"},
+		{Name: "source", Type: field.TypeEnum, Enums: []string{"platform", "external_oci"}, Default: "platform"},
+		{Name: "registry_id", Type: field.TypeString, Nullable: true},
+		{Name: "repo", Type: field.TypeString, Nullable: true},
+		{Name: "description", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "archived"}, Default: "active"},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+	}
+	// TemplatesTable holds the schema information for the "templates" table.
+	TemplatesTable = &schema.Table{
+		Name:       "templates",
+		Columns:    TemplatesColumns,
+		PrimaryKey: []*schema.Column{TemplatesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "templates_organizations_templates",
+				Columns:    []*schema.Column{TemplatesColumns[10]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "template_org_id_name",
+				Unique:  true,
+				Columns: []*schema.Column{TemplatesColumns[10], TemplatesColumns[1]},
+			},
+			{
+				Name:    "template_type",
+				Unique:  false,
+				Columns: []*schema.Column{TemplatesColumns[2]},
+			},
+			{
+				Name:    "template_source",
+				Unique:  false,
+				Columns: []*schema.Column{TemplatesColumns[3]},
+			},
+			{
+				Name:    "template_status",
+				Unique:  false,
+				Columns: []*schema.Column{TemplatesColumns[7]},
+			},
+		},
+	}
+	// TemplateVersionsColumns holds the columns for the "template_versions" table.
+	TemplateVersionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "version", Type: field.TypeString},
+		{Name: "digest", Type: field.TypeString, Nullable: true},
+		{Name: "values_schema", Type: field.TypeJSON, Nullable: true},
+		{Name: "changelog", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "archived"}, Default: "active"},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "template_id", Type: field.TypeString},
+	}
+	// TemplateVersionsTable holds the schema information for the "template_versions" table.
+	TemplateVersionsTable = &schema.Table{
+		Name:       "template_versions",
+		Columns:    TemplateVersionsColumns,
+		PrimaryKey: []*schema.Column{TemplateVersionsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "template_versions_templates_versions",
+				Columns:    []*schema.Column{TemplateVersionsColumns[7]},
+				RefColumns: []*schema.Column{TemplatesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "templateversion_template_id",
+				Unique:  false,
+				Columns: []*schema.Column{TemplateVersionsColumns[7]},
+			},
+			{
+				Name:    "templateversion_template_id_version",
+				Unique:  true,
+				Columns: []*schema.Column{TemplateVersionsColumns[7], TemplateVersionsColumns[1]},
+			},
+			{
+				Name:    "templateversion_status",
+				Unique:  false,
+				Columns: []*schema.Column{TemplateVersionsColumns[5]},
+			},
+		},
+	}
 	// UsersColumns holds the columns for the "users" table.
 	UsersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -370,6 +462,8 @@ var (
 		RolesTable,
 		ServicesTable,
 		SystemSettingsTable,
+		TemplatesTable,
+		TemplateVersionsTable,
 		UsersTable,
 	}
 )
@@ -380,5 +474,7 @@ func init() {
 	EnvironmentsTable.ForeignKeys[1].RefTable = OrganizationsTable
 	RegistriesTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ServicesTable.ForeignKeys[0].RefTable = OrganizationsTable
+	TemplatesTable.ForeignKeys[0].RefTable = OrganizationsTable
+	TemplateVersionsTable.ForeignKeys[0].RefTable = TemplatesTable
 	UsersTable.ForeignKeys[0].RefTable = OrganizationsTable
 }

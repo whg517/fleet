@@ -30,5 +30,11 @@ type Service func(*sql.Selector)
 // SystemSetting is the predicate function for systemsetting builders.
 type SystemSetting func(*sql.Selector)
 
+// Template is the predicate function for template builders.
+type Template func(*sql.Selector)
+
+// TemplateVersion is the predicate function for templateversion builders.
+type TemplateVersion func(*sql.Selector)
+
 // User is the predicate function for user builders.
 type User func(*sql.Selector)

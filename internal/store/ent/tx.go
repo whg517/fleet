@@ -28,6 +28,10 @@ type Tx struct {
 	Service *ServiceClient
 	// SystemSetting is the client for interacting with the SystemSetting builders.
 	SystemSetting *SystemSettingClient
+	// Template is the client for interacting with the Template builders.
+	Template *TemplateClient
+	// TemplateVersion is the client for interacting with the TemplateVersion builders.
+	TemplateVersion *TemplateVersionClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 
@@ -169,6 +173,8 @@ func (tx *Tx) init() {
 	tx.Role = NewRoleClient(tx.config)
 	tx.Service = NewServiceClient(tx.config)
 	tx.SystemSetting = NewSystemSettingClient(tx.config)
+	tx.Template = NewTemplateClient(tx.config)
+	tx.TemplateVersion = NewTemplateVersionClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 }
 

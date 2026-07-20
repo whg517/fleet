@@ -9,6 +9,7 @@ import (
 	"github.com/whg517/fleet/internal/domain/cluster"
 	svcerrs "github.com/whg517/fleet/internal/domain/service"
 	syserrs "github.com/whg517/fleet/internal/domain/system"
+	tmplerrs "github.com/whg517/fleet/internal/domain/template"
 )
 
 // APIError represents a structured error response.
@@ -96,6 +97,36 @@ func systemErrorResponse(c echo.Context, err error) error {
 			"error": {Code: "CONFLICT", Message: "setting already exists"},
 		})
 	case errors.Is(err, syserrs.ErrInvalidInput):
+		return c.JSON(http.StatusBadRequest, map[string]APIError{
+			"error": {Code: "INVALID_INPUT", Message: err.Error()},
+		})
+	default:
+		return c.JSON(http.StatusInternalServerError, map[string]APIError{
+			"error": {Code: "INTERNAL", Message: "internal server error"},
+		})
+	}
+}
+
+// templateErrorResponse maps template domain errors to HTTP responses.
+func templateErrorResponse(c echo.Context, err error) error {
+	switch {
+	case errors.Is(err, tmplerrs.ErrTemplateNotFound):
+		return c.JSON(http.StatusNotFound, map[string]APIError{
+			"error": {Code: "NOT_FOUND", Message: "template not found"},
+		})
+	case errors.Is(err, tmplerrs.ErrTemplateAlreadyExists):
+		return c.JSON(http.StatusConflict, map[string]APIError{
+			"error": {Code: "CONFLICT", Message: "template already exists"},
+		})
+	case errors.Is(err, tmplerrs.ErrVersionNotFound):
+		return c.JSON(http.StatusNotFound, map[string]APIError{
+			"error": {Code: "NOT_FOUND", Message: "template version not found"},
+		})
+	case errors.Is(err, tmplerrs.ErrVersionAlreadyExists):
+		return c.JSON(http.StatusConflict, map[string]APIError{
+			"error": {Code: "CONFLICT", Message: "template version already exists"},
+		})
+	case errors.Is(err, tmplerrs.ErrInvalidInput):
 		return c.JSON(http.StatusBadRequest, map[string]APIError{
 			"error": {Code: "INVALID_INPUT", Message: err.Error()},
 		})

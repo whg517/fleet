@@ -33,6 +33,7 @@ func (Organization) Edges() []ent.Edge {
 		edge.To("environments", Environment.Type),
 		edge.To("registries", Registry.Type),
 		edge.To("services", Service.Type),
+		edge.To("templates", Template.Type),
 	}
 }
 
