@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
+	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/environment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
 )
@@ -121,6 +122,21 @@ func (_c *ClusterCreate) AddEnvironments(v ...*Environment) *ClusterCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddEnvironmentIDs(ids...)
+}
+
+// AddDeploymentIDs adds the "deployments" edge to the Deployment entity by IDs.
+func (_c *ClusterCreate) AddDeploymentIDs(ids ...string) *ClusterCreate {
+	_c.mutation.AddDeploymentIDs(ids...)
+	return _c
+}
+
+// AddDeployments adds the "deployments" edges to the Deployment entity.
+func (_c *ClusterCreate) AddDeployments(v ...*Deployment) *ClusterCreate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddDeploymentIDs(ids...)
 }
 
 // SetOrganizationID sets the "organization" edge to the Organization entity by ID.
@@ -295,6 +311,22 @@ func (_c *ClusterCreate) createSpec() (*Cluster, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(environment.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.DeploymentsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   cluster.DeploymentsTable,
+			Columns: []string{cluster.DeploymentsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(deployment.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

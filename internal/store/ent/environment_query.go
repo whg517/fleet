@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -12,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
+	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/environment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
 	"github.com/whg517/fleet/internal/store/ent/predicate"
@@ -26,6 +28,7 @@ type EnvironmentQuery struct {
 	predicates       []predicate.Environment
 	withCluster      *ClusterQuery
 	withOrganization *OrganizationQuery
+	withDeployments  *DeploymentQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -99,6 +102,28 @@ func (_q *EnvironmentQuery) QueryOrganization() *OrganizationQuery {
 			sqlgraph.From(environment.Table, environment.FieldID, selector),
 			sqlgraph.To(organization.Table, organization.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, environment.OrganizationTable, environment.OrganizationColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryDeployments chains the current query on the "deployments" edge.
+func (_q *EnvironmentQuery) QueryDeployments() *DeploymentQuery {
+	query := (&DeploymentClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(environment.Table, environment.FieldID, selector),
+			sqlgraph.To(deployment.Table, deployment.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, environment.DeploymentsTable, environment.DeploymentsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -300,6 +325,7 @@ func (_q *EnvironmentQuery) Clone() *EnvironmentQuery {
 		predicates:       append([]predicate.Environment{}, _q.predicates...),
 		withCluster:      _q.withCluster.Clone(),
 		withOrganization: _q.withOrganization.Clone(),
+		withDeployments:  _q.withDeployments.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -325,6 +351,17 @@ func (_q *EnvironmentQuery) WithOrganization(opts ...func(*OrganizationQuery)) *
 		opt(query)
 	}
 	_q.withOrganization = query
+	return _q
+}
+
+// WithDeployments tells the query-builder to eager-load the nodes that are connected to
+// the "deployments" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *EnvironmentQuery) WithDeployments(opts ...func(*DeploymentQuery)) *EnvironmentQuery {
+	query := (&DeploymentClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withDeployments = query
 	return _q
 }
 
@@ -406,9 +443,10 @@ func (_q *EnvironmentQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	var (
 		nodes       = []*Environment{}
 		_spec       = _q.querySpec()
-		loadedTypes = [2]bool{
+		loadedTypes = [3]bool{
 			_q.withCluster != nil,
 			_q.withOrganization != nil,
+			_q.withDeployments != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -438,6 +476,13 @@ func (_q *EnvironmentQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	if query := _q.withOrganization; query != nil {
 		if err := _q.loadOrganization(ctx, query, nodes, nil,
 			func(n *Environment, e *Organization) { n.Edges.Organization = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withDeployments; query != nil {
+		if err := _q.loadDeployments(ctx, query, nodes,
+			func(n *Environment) { n.Edges.Deployments = []*Deployment{} },
+			func(n *Environment, e *Deployment) { n.Edges.Deployments = append(n.Edges.Deployments, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -499,6 +544,36 @@ func (_q *EnvironmentQuery) loadOrganization(ctx context.Context, query *Organiz
 		for i := range nodes {
 			assign(nodes[i], n)
 		}
+	}
+	return nil
+}
+func (_q *EnvironmentQuery) loadDeployments(ctx context.Context, query *DeploymentQuery, nodes []*Environment, init func(*Environment), assign func(*Environment, *Deployment)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*Environment)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(deployment.FieldEnvironmentID)
+	}
+	query.Where(predicate.Deployment(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(environment.DeploymentsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.EnvironmentID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "environment_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
 	}
 	return nil
 }

@@ -50,9 +50,11 @@ type EnvironmentEdges struct {
 	Cluster *Cluster `json:"cluster,omitempty"`
 	// Organization holds the value of the organization edge.
 	Organization *Organization `json:"organization,omitempty"`
+	// Deployments holds the value of the deployments edge.
+	Deployments []*Deployment `json:"deployments,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [3]bool
 }
 
 // ClusterOrErr returns the Cluster value or an error if the edge
@@ -75,6 +77,15 @@ func (e EnvironmentEdges) OrganizationOrErr() (*Organization, error) {
 		return nil, &NotFoundError{label: organization.Label}
 	}
 	return nil, &NotLoadedError{edge: "organization"}
+}
+
+// DeploymentsOrErr returns the Deployments value or an error if the edge
+// was not loaded in eager-loading.
+func (e EnvironmentEdges) DeploymentsOrErr() ([]*Deployment, error) {
+	if e.loadedTypes[2] {
+		return e.Deployments, nil
+	}
+	return nil, &NotLoadedError{edge: "deployments"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -188,6 +199,11 @@ func (_m *Environment) QueryCluster() *ClusterQuery {
 // QueryOrganization queries the "organization" edge of the Environment entity.
 func (_m *Environment) QueryOrganization() *OrganizationQuery {
 	return NewEnvironmentClient(_m.config).QueryOrganization(_m)
+}
+
+// QueryDeployments queries the "deployments" edge of the Environment entity.
+func (_m *Environment) QueryDeployments() *DeploymentQuery {
+	return NewEnvironmentClient(_m.config).QueryDeployments(_m)
 }
 
 // Update returns a builder for updating this Environment.

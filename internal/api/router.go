@@ -14,10 +14,12 @@ import (
 	"github.com/whg517/fleet/internal/domain/audit"
 	"github.com/whg517/fleet/internal/domain/auth"
 	"github.com/whg517/fleet/internal/domain/cluster"
+	"github.com/whg517/fleet/internal/domain/deployment"
 	"github.com/whg517/fleet/internal/domain/rbac"
 	"github.com/whg517/fleet/internal/domain/service"
 	sysdomain "github.com/whg517/fleet/internal/domain/system"
 	"github.com/whg517/fleet/internal/domain/template"
+	"github.com/whg517/fleet/internal/infra/argocd"
 	"github.com/whg517/fleet/internal/infra/config"
 	"github.com/whg517/fleet/internal/infra/secrets"
 	entclient "github.com/whg517/fleet/internal/store/ent"
@@ -151,6 +153,24 @@ func registerRoutes(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Cl
 		templates.POST("/:id/versions", tmplH.PublishVersion)
 		templates.GET("/:id/versions", tmplH.ListVersions)
 		templates.POST("/:id/versions/:ver/archive", tmplH.ArchiveVersion)
+
+		// Deployment management
+		deployStore := deployment.NewEntStore(entClient)
+		deployLookup := deployment.NewLookupEntStore(entClient)
+		deployArgoClient := argocd.NewDeploymentArgoCDAdapter("", "", logger) // placeholder — real config comes from SystemSetting at runtime
+		deploySvc := deployment.NewService(deployStore, deployLookup, deployArgoClient, logger)
+		deployH := handler.NewDeploymentHandler(deploySvc)
+
+		var deployMW []echo.MiddlewareFunc
+		if rbacMW != nil {
+			deployMW = append(deployMW, rbacMW)
+		}
+		deployments := v1.Group("/deployments", deployMW...)
+		deployments.POST("", deployH.Create)
+		deployments.GET("", deployH.List)
+		deployments.GET("/:id", deployH.Get)
+		deployments.GET("/:id/status", deployH.GetStatus)
+		deployments.POST("/:id/rollback", deployH.Rollback)
 
 		// System settings management
 		sysStore := sysdomain.NewEntStore(entClient)

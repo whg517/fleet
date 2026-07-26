@@ -39,6 +39,7 @@ func (Environment) Edges() []ent.Edge {
 			Ref("environments").
 			Field("org_id").
 			Unique(),
+		edge.To("deployments", Deployment.Type),
 	}
 }
 

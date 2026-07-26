@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/whg517/fleet/internal/store/ent/auditlog"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
+	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/environment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
 	"github.com/whg517/fleet/internal/store/ent/predicate"
@@ -36,6 +37,7 @@ const (
 	// Node types.
 	TypeAuditLog        = "AuditLog"
 	TypeCluster         = "Cluster"
+	TypeDeployment      = "Deployment"
 	TypeEnvironment     = "Environment"
 	TypeOrganization    = "Organization"
 	TypeRegistry        = "Registry"
@@ -872,6 +874,9 @@ type ClusterMutation struct {
 	environments         map[string]struct{}
 	removedenvironments  map[string]struct{}
 	clearedenvironments  bool
+	deployments          map[string]struct{}
+	removeddeployments   map[string]struct{}
+	cleareddeployments   bool
 	organization         *string
 	clearedorganization  bool
 	done                 bool
@@ -1364,6 +1369,60 @@ func (m *ClusterMutation) ResetEnvironments() {
 	m.removedenvironments = nil
 }
 
+// AddDeploymentIDs adds the "deployments" edge to the Deployment entity by ids.
+func (m *ClusterMutation) AddDeploymentIDs(ids ...string) {
+	if m.deployments == nil {
+		m.deployments = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.deployments[ids[i]] = struct{}{}
+	}
+}
+
+// ClearDeployments clears the "deployments" edge to the Deployment entity.
+func (m *ClusterMutation) ClearDeployments() {
+	m.cleareddeployments = true
+}
+
+// DeploymentsCleared reports if the "deployments" edge to the Deployment entity was cleared.
+func (m *ClusterMutation) DeploymentsCleared() bool {
+	return m.cleareddeployments
+}
+
+// RemoveDeploymentIDs removes the "deployments" edge to the Deployment entity by IDs.
+func (m *ClusterMutation) RemoveDeploymentIDs(ids ...string) {
+	if m.removeddeployments == nil {
+		m.removeddeployments = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.deployments, ids[i])
+		m.removeddeployments[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedDeployments returns the removed IDs of the "deployments" edge to the Deployment entity.
+func (m *ClusterMutation) RemovedDeploymentsIDs() (ids []string) {
+	for id := range m.removeddeployments {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// DeploymentsIDs returns the "deployments" edge IDs in the mutation.
+func (m *ClusterMutation) DeploymentsIDs() (ids []string) {
+	for id := range m.deployments {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetDeployments resets all changes to the "deployments" edge.
+func (m *ClusterMutation) ResetDeployments() {
+	m.deployments = nil
+	m.cleareddeployments = false
+	m.removeddeployments = nil
+}
+
 // SetOrganizationID sets the "organization" edge to the Organization entity by id.
 func (m *ClusterMutation) SetOrganizationID(id string) {
 	m.organization = &id
@@ -1677,9 +1736,12 @@ func (m *ClusterMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ClusterMutation) AddedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.environments != nil {
 		edges = append(edges, cluster.EdgeEnvironments)
+	}
+	if m.deployments != nil {
+		edges = append(edges, cluster.EdgeDeployments)
 	}
 	if m.organization != nil {
 		edges = append(edges, cluster.EdgeOrganization)
@@ -1697,6 +1759,12 @@ func (m *ClusterMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case cluster.EdgeDeployments:
+		ids := make([]ent.Value, 0, len(m.deployments))
+		for id := range m.deployments {
+			ids = append(ids, id)
+		}
+		return ids
 	case cluster.EdgeOrganization:
 		if id := m.organization; id != nil {
 			return []ent.Value{*id}
@@ -1707,9 +1775,12 @@ func (m *ClusterMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ClusterMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.removedenvironments != nil {
 		edges = append(edges, cluster.EdgeEnvironments)
+	}
+	if m.removeddeployments != nil {
+		edges = append(edges, cluster.EdgeDeployments)
 	}
 	return edges
 }
@@ -1724,15 +1795,24 @@ func (m *ClusterMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case cluster.EdgeDeployments:
+		ids := make([]ent.Value, 0, len(m.removeddeployments))
+		for id := range m.removeddeployments {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ClusterMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.clearedenvironments {
 		edges = append(edges, cluster.EdgeEnvironments)
+	}
+	if m.cleareddeployments {
+		edges = append(edges, cluster.EdgeDeployments)
 	}
 	if m.clearedorganization {
 		edges = append(edges, cluster.EdgeOrganization)
@@ -1746,6 +1826,8 @@ func (m *ClusterMutation) EdgeCleared(name string) bool {
 	switch name {
 	case cluster.EdgeEnvironments:
 		return m.clearedenvironments
+	case cluster.EdgeDeployments:
+		return m.cleareddeployments
 	case cluster.EdgeOrganization:
 		return m.clearedorganization
 	}
@@ -1770,11 +1852,1443 @@ func (m *ClusterMutation) ResetEdge(name string) error {
 	case cluster.EdgeEnvironments:
 		m.ResetEnvironments()
 		return nil
+	case cluster.EdgeDeployments:
+		m.ResetDeployments()
+		return nil
 	case cluster.EdgeOrganization:
 		m.ResetOrganization()
 		return nil
 	}
 	return fmt.Errorf("unknown Cluster edge %s", name)
+}
+
+// DeploymentMutation represents an operation that mutates the Deployment nodes in the graph.
+type DeploymentMutation struct {
+	config
+	op                  Op
+	typ                 string
+	id                  *string
+	template_version_id *string
+	version             *string
+	values_override     *map[string]interface{}
+	status              *deployment.Status
+	argocd_app_name     *string
+	sync_status         *string
+	health_status       *string
+	created_by          *string
+	created_at          *time.Time
+	updated_at          *time.Time
+	completed_at        *time.Time
+	clearedFields       map[string]struct{}
+	service             *string
+	clearedservice      bool
+	environment         *string
+	clearedenvironment  bool
+	cluster             *string
+	clearedcluster      bool
+	organization        *string
+	clearedorganization bool
+	done                bool
+	oldValue            func(context.Context) (*Deployment, error)
+	predicates          []predicate.Deployment
+}
+
+var _ ent.Mutation = (*DeploymentMutation)(nil)
+
+// deploymentOption allows management of the mutation configuration using functional options.
+type deploymentOption func(*DeploymentMutation)
+
+// newDeploymentMutation creates new mutation for the Deployment entity.
+func newDeploymentMutation(c config, op Op, opts ...deploymentOption) *DeploymentMutation {
+	m := &DeploymentMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeDeployment,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withDeploymentID sets the ID field of the mutation.
+func withDeploymentID(id string) deploymentOption {
+	return func(m *DeploymentMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Deployment
+		)
+		m.oldValue = func(ctx context.Context) (*Deployment, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Deployment.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withDeployment sets the old Deployment of the mutation.
+func withDeployment(node *Deployment) deploymentOption {
+	return func(m *DeploymentMutation) {
+		m.oldValue = func(context.Context) (*Deployment, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m DeploymentMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m DeploymentMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Deployment entities.
+func (m *DeploymentMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *DeploymentMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *DeploymentMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Deployment.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *DeploymentMutation) SetOrgID(s string) {
+	m.organization = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *DeploymentMutation) OrgID() (r string, exists bool) {
+	v := m.organization
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ClearOrgID clears the value of the "org_id" field.
+func (m *DeploymentMutation) ClearOrgID() {
+	m.organization = nil
+	m.clearedFields[deployment.FieldOrgID] = struct{}{}
+}
+
+// OrgIDCleared returns if the "org_id" field was cleared in this mutation.
+func (m *DeploymentMutation) OrgIDCleared() bool {
+	_, ok := m.clearedFields[deployment.FieldOrgID]
+	return ok
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *DeploymentMutation) ResetOrgID() {
+	m.organization = nil
+	delete(m.clearedFields, deployment.FieldOrgID)
+}
+
+// SetServiceID sets the "service_id" field.
+func (m *DeploymentMutation) SetServiceID(s string) {
+	m.service = &s
+}
+
+// ServiceID returns the value of the "service_id" field in the mutation.
+func (m *DeploymentMutation) ServiceID() (r string, exists bool) {
+	v := m.service
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldServiceID returns the old "service_id" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldServiceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldServiceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldServiceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldServiceID: %w", err)
+	}
+	return oldValue.ServiceID, nil
+}
+
+// ResetServiceID resets all changes to the "service_id" field.
+func (m *DeploymentMutation) ResetServiceID() {
+	m.service = nil
+}
+
+// SetEnvironmentID sets the "environment_id" field.
+func (m *DeploymentMutation) SetEnvironmentID(s string) {
+	m.environment = &s
+}
+
+// EnvironmentID returns the value of the "environment_id" field in the mutation.
+func (m *DeploymentMutation) EnvironmentID() (r string, exists bool) {
+	v := m.environment
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnvironmentID returns the old "environment_id" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldEnvironmentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnvironmentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnvironmentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnvironmentID: %w", err)
+	}
+	return oldValue.EnvironmentID, nil
+}
+
+// ResetEnvironmentID resets all changes to the "environment_id" field.
+func (m *DeploymentMutation) ResetEnvironmentID() {
+	m.environment = nil
+}
+
+// SetClusterID sets the "cluster_id" field.
+func (m *DeploymentMutation) SetClusterID(s string) {
+	m.cluster = &s
+}
+
+// ClusterID returns the value of the "cluster_id" field in the mutation.
+func (m *DeploymentMutation) ClusterID() (r string, exists bool) {
+	v := m.cluster
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClusterID returns the old "cluster_id" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldClusterID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClusterID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClusterID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClusterID: %w", err)
+	}
+	return oldValue.ClusterID, nil
+}
+
+// ResetClusterID resets all changes to the "cluster_id" field.
+func (m *DeploymentMutation) ResetClusterID() {
+	m.cluster = nil
+}
+
+// SetTemplateVersionID sets the "template_version_id" field.
+func (m *DeploymentMutation) SetTemplateVersionID(s string) {
+	m.template_version_id = &s
+}
+
+// TemplateVersionID returns the value of the "template_version_id" field in the mutation.
+func (m *DeploymentMutation) TemplateVersionID() (r string, exists bool) {
+	v := m.template_version_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTemplateVersionID returns the old "template_version_id" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldTemplateVersionID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTemplateVersionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTemplateVersionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTemplateVersionID: %w", err)
+	}
+	return oldValue.TemplateVersionID, nil
+}
+
+// ResetTemplateVersionID resets all changes to the "template_version_id" field.
+func (m *DeploymentMutation) ResetTemplateVersionID() {
+	m.template_version_id = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *DeploymentMutation) SetVersion(s string) {
+	m.version = &s
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *DeploymentMutation) Version() (r string, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *DeploymentMutation) ResetVersion() {
+	m.version = nil
+}
+
+// SetValuesOverride sets the "values_override" field.
+func (m *DeploymentMutation) SetValuesOverride(value map[string]interface{}) {
+	m.values_override = &value
+}
+
+// ValuesOverride returns the value of the "values_override" field in the mutation.
+func (m *DeploymentMutation) ValuesOverride() (r map[string]interface{}, exists bool) {
+	v := m.values_override
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValuesOverride returns the old "values_override" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldValuesOverride(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValuesOverride is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValuesOverride requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValuesOverride: %w", err)
+	}
+	return oldValue.ValuesOverride, nil
+}
+
+// ClearValuesOverride clears the value of the "values_override" field.
+func (m *DeploymentMutation) ClearValuesOverride() {
+	m.values_override = nil
+	m.clearedFields[deployment.FieldValuesOverride] = struct{}{}
+}
+
+// ValuesOverrideCleared returns if the "values_override" field was cleared in this mutation.
+func (m *DeploymentMutation) ValuesOverrideCleared() bool {
+	_, ok := m.clearedFields[deployment.FieldValuesOverride]
+	return ok
+}
+
+// ResetValuesOverride resets all changes to the "values_override" field.
+func (m *DeploymentMutation) ResetValuesOverride() {
+	m.values_override = nil
+	delete(m.clearedFields, deployment.FieldValuesOverride)
+}
+
+// SetStatus sets the "status" field.
+func (m *DeploymentMutation) SetStatus(d deployment.Status) {
+	m.status = &d
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *DeploymentMutation) Status() (r deployment.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldStatus(ctx context.Context) (v deployment.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *DeploymentMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetArgocdAppName sets the "argocd_app_name" field.
+func (m *DeploymentMutation) SetArgocdAppName(s string) {
+	m.argocd_app_name = &s
+}
+
+// ArgocdAppName returns the value of the "argocd_app_name" field in the mutation.
+func (m *DeploymentMutation) ArgocdAppName() (r string, exists bool) {
+	v := m.argocd_app_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldArgocdAppName returns the old "argocd_app_name" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldArgocdAppName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldArgocdAppName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldArgocdAppName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldArgocdAppName: %w", err)
+	}
+	return oldValue.ArgocdAppName, nil
+}
+
+// ClearArgocdAppName clears the value of the "argocd_app_name" field.
+func (m *DeploymentMutation) ClearArgocdAppName() {
+	m.argocd_app_name = nil
+	m.clearedFields[deployment.FieldArgocdAppName] = struct{}{}
+}
+
+// ArgocdAppNameCleared returns if the "argocd_app_name" field was cleared in this mutation.
+func (m *DeploymentMutation) ArgocdAppNameCleared() bool {
+	_, ok := m.clearedFields[deployment.FieldArgocdAppName]
+	return ok
+}
+
+// ResetArgocdAppName resets all changes to the "argocd_app_name" field.
+func (m *DeploymentMutation) ResetArgocdAppName() {
+	m.argocd_app_name = nil
+	delete(m.clearedFields, deployment.FieldArgocdAppName)
+}
+
+// SetSyncStatus sets the "sync_status" field.
+func (m *DeploymentMutation) SetSyncStatus(s string) {
+	m.sync_status = &s
+}
+
+// SyncStatus returns the value of the "sync_status" field in the mutation.
+func (m *DeploymentMutation) SyncStatus() (r string, exists bool) {
+	v := m.sync_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSyncStatus returns the old "sync_status" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldSyncStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSyncStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSyncStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSyncStatus: %w", err)
+	}
+	return oldValue.SyncStatus, nil
+}
+
+// ClearSyncStatus clears the value of the "sync_status" field.
+func (m *DeploymentMutation) ClearSyncStatus() {
+	m.sync_status = nil
+	m.clearedFields[deployment.FieldSyncStatus] = struct{}{}
+}
+
+// SyncStatusCleared returns if the "sync_status" field was cleared in this mutation.
+func (m *DeploymentMutation) SyncStatusCleared() bool {
+	_, ok := m.clearedFields[deployment.FieldSyncStatus]
+	return ok
+}
+
+// ResetSyncStatus resets all changes to the "sync_status" field.
+func (m *DeploymentMutation) ResetSyncStatus() {
+	m.sync_status = nil
+	delete(m.clearedFields, deployment.FieldSyncStatus)
+}
+
+// SetHealthStatus sets the "health_status" field.
+func (m *DeploymentMutation) SetHealthStatus(s string) {
+	m.health_status = &s
+}
+
+// HealthStatus returns the value of the "health_status" field in the mutation.
+func (m *DeploymentMutation) HealthStatus() (r string, exists bool) {
+	v := m.health_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHealthStatus returns the old "health_status" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldHealthStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHealthStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHealthStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHealthStatus: %w", err)
+	}
+	return oldValue.HealthStatus, nil
+}
+
+// ClearHealthStatus clears the value of the "health_status" field.
+func (m *DeploymentMutation) ClearHealthStatus() {
+	m.health_status = nil
+	m.clearedFields[deployment.FieldHealthStatus] = struct{}{}
+}
+
+// HealthStatusCleared returns if the "health_status" field was cleared in this mutation.
+func (m *DeploymentMutation) HealthStatusCleared() bool {
+	_, ok := m.clearedFields[deployment.FieldHealthStatus]
+	return ok
+}
+
+// ResetHealthStatus resets all changes to the "health_status" field.
+func (m *DeploymentMutation) ResetHealthStatus() {
+	m.health_status = nil
+	delete(m.clearedFields, deployment.FieldHealthStatus)
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (m *DeploymentMutation) SetCreatedBy(s string) {
+	m.created_by = &s
+}
+
+// CreatedBy returns the value of the "created_by" field in the mutation.
+func (m *DeploymentMutation) CreatedBy() (r string, exists bool) {
+	v := m.created_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedBy returns the old "created_by" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldCreatedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedBy: %w", err)
+	}
+	return oldValue.CreatedBy, nil
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (m *DeploymentMutation) ClearCreatedBy() {
+	m.created_by = nil
+	m.clearedFields[deployment.FieldCreatedBy] = struct{}{}
+}
+
+// CreatedByCleared returns if the "created_by" field was cleared in this mutation.
+func (m *DeploymentMutation) CreatedByCleared() bool {
+	_, ok := m.clearedFields[deployment.FieldCreatedBy]
+	return ok
+}
+
+// ResetCreatedBy resets all changes to the "created_by" field.
+func (m *DeploymentMutation) ResetCreatedBy() {
+	m.created_by = nil
+	delete(m.clearedFields, deployment.FieldCreatedBy)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *DeploymentMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *DeploymentMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *DeploymentMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *DeploymentMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *DeploymentMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *DeploymentMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetCompletedAt sets the "completed_at" field.
+func (m *DeploymentMutation) SetCompletedAt(t time.Time) {
+	m.completed_at = &t
+}
+
+// CompletedAt returns the value of the "completed_at" field in the mutation.
+func (m *DeploymentMutation) CompletedAt() (r time.Time, exists bool) {
+	v := m.completed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCompletedAt returns the old "completed_at" field's value of the Deployment entity.
+// If the Deployment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DeploymentMutation) OldCompletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCompletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCompletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCompletedAt: %w", err)
+	}
+	return oldValue.CompletedAt, nil
+}
+
+// ClearCompletedAt clears the value of the "completed_at" field.
+func (m *DeploymentMutation) ClearCompletedAt() {
+	m.completed_at = nil
+	m.clearedFields[deployment.FieldCompletedAt] = struct{}{}
+}
+
+// CompletedAtCleared returns if the "completed_at" field was cleared in this mutation.
+func (m *DeploymentMutation) CompletedAtCleared() bool {
+	_, ok := m.clearedFields[deployment.FieldCompletedAt]
+	return ok
+}
+
+// ResetCompletedAt resets all changes to the "completed_at" field.
+func (m *DeploymentMutation) ResetCompletedAt() {
+	m.completed_at = nil
+	delete(m.clearedFields, deployment.FieldCompletedAt)
+}
+
+// ClearService clears the "service" edge to the Service entity.
+func (m *DeploymentMutation) ClearService() {
+	m.clearedservice = true
+	m.clearedFields[deployment.FieldServiceID] = struct{}{}
+}
+
+// ServiceCleared reports if the "service" edge to the Service entity was cleared.
+func (m *DeploymentMutation) ServiceCleared() bool {
+	return m.clearedservice
+}
+
+// ServiceIDs returns the "service" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ServiceID instead. It exists only for internal usage by the builders.
+func (m *DeploymentMutation) ServiceIDs() (ids []string) {
+	if id := m.service; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetService resets all changes to the "service" edge.
+func (m *DeploymentMutation) ResetService() {
+	m.service = nil
+	m.clearedservice = false
+}
+
+// ClearEnvironment clears the "environment" edge to the Environment entity.
+func (m *DeploymentMutation) ClearEnvironment() {
+	m.clearedenvironment = true
+	m.clearedFields[deployment.FieldEnvironmentID] = struct{}{}
+}
+
+// EnvironmentCleared reports if the "environment" edge to the Environment entity was cleared.
+func (m *DeploymentMutation) EnvironmentCleared() bool {
+	return m.clearedenvironment
+}
+
+// EnvironmentIDs returns the "environment" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// EnvironmentID instead. It exists only for internal usage by the builders.
+func (m *DeploymentMutation) EnvironmentIDs() (ids []string) {
+	if id := m.environment; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetEnvironment resets all changes to the "environment" edge.
+func (m *DeploymentMutation) ResetEnvironment() {
+	m.environment = nil
+	m.clearedenvironment = false
+}
+
+// ClearCluster clears the "cluster" edge to the Cluster entity.
+func (m *DeploymentMutation) ClearCluster() {
+	m.clearedcluster = true
+	m.clearedFields[deployment.FieldClusterID] = struct{}{}
+}
+
+// ClusterCleared reports if the "cluster" edge to the Cluster entity was cleared.
+func (m *DeploymentMutation) ClusterCleared() bool {
+	return m.clearedcluster
+}
+
+// ClusterIDs returns the "cluster" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ClusterID instead. It exists only for internal usage by the builders.
+func (m *DeploymentMutation) ClusterIDs() (ids []string) {
+	if id := m.cluster; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetCluster resets all changes to the "cluster" edge.
+func (m *DeploymentMutation) ResetCluster() {
+	m.cluster = nil
+	m.clearedcluster = false
+}
+
+// SetOrganizationID sets the "organization" edge to the Organization entity by id.
+func (m *DeploymentMutation) SetOrganizationID(id string) {
+	m.organization = &id
+}
+
+// ClearOrganization clears the "organization" edge to the Organization entity.
+func (m *DeploymentMutation) ClearOrganization() {
+	m.clearedorganization = true
+	m.clearedFields[deployment.FieldOrgID] = struct{}{}
+}
+
+// OrganizationCleared reports if the "organization" edge to the Organization entity was cleared.
+func (m *DeploymentMutation) OrganizationCleared() bool {
+	return m.OrgIDCleared() || m.clearedorganization
+}
+
+// OrganizationID returns the "organization" edge ID in the mutation.
+func (m *DeploymentMutation) OrganizationID() (id string, exists bool) {
+	if m.organization != nil {
+		return *m.organization, true
+	}
+	return
+}
+
+// OrganizationIDs returns the "organization" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OrganizationID instead. It exists only for internal usage by the builders.
+func (m *DeploymentMutation) OrganizationIDs() (ids []string) {
+	if id := m.organization; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetOrganization resets all changes to the "organization" edge.
+func (m *DeploymentMutation) ResetOrganization() {
+	m.organization = nil
+	m.clearedorganization = false
+}
+
+// Where appends a list predicates to the DeploymentMutation builder.
+func (m *DeploymentMutation) Where(ps ...predicate.Deployment) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the DeploymentMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *DeploymentMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Deployment, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *DeploymentMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *DeploymentMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Deployment).
+func (m *DeploymentMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *DeploymentMutation) Fields() []string {
+	fields := make([]string, 0, 15)
+	if m.organization != nil {
+		fields = append(fields, deployment.FieldOrgID)
+	}
+	if m.service != nil {
+		fields = append(fields, deployment.FieldServiceID)
+	}
+	if m.environment != nil {
+		fields = append(fields, deployment.FieldEnvironmentID)
+	}
+	if m.cluster != nil {
+		fields = append(fields, deployment.FieldClusterID)
+	}
+	if m.template_version_id != nil {
+		fields = append(fields, deployment.FieldTemplateVersionID)
+	}
+	if m.version != nil {
+		fields = append(fields, deployment.FieldVersion)
+	}
+	if m.values_override != nil {
+		fields = append(fields, deployment.FieldValuesOverride)
+	}
+	if m.status != nil {
+		fields = append(fields, deployment.FieldStatus)
+	}
+	if m.argocd_app_name != nil {
+		fields = append(fields, deployment.FieldArgocdAppName)
+	}
+	if m.sync_status != nil {
+		fields = append(fields, deployment.FieldSyncStatus)
+	}
+	if m.health_status != nil {
+		fields = append(fields, deployment.FieldHealthStatus)
+	}
+	if m.created_by != nil {
+		fields = append(fields, deployment.FieldCreatedBy)
+	}
+	if m.created_at != nil {
+		fields = append(fields, deployment.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, deployment.FieldUpdatedAt)
+	}
+	if m.completed_at != nil {
+		fields = append(fields, deployment.FieldCompletedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *DeploymentMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case deployment.FieldOrgID:
+		return m.OrgID()
+	case deployment.FieldServiceID:
+		return m.ServiceID()
+	case deployment.FieldEnvironmentID:
+		return m.EnvironmentID()
+	case deployment.FieldClusterID:
+		return m.ClusterID()
+	case deployment.FieldTemplateVersionID:
+		return m.TemplateVersionID()
+	case deployment.FieldVersion:
+		return m.Version()
+	case deployment.FieldValuesOverride:
+		return m.ValuesOverride()
+	case deployment.FieldStatus:
+		return m.Status()
+	case deployment.FieldArgocdAppName:
+		return m.ArgocdAppName()
+	case deployment.FieldSyncStatus:
+		return m.SyncStatus()
+	case deployment.FieldHealthStatus:
+		return m.HealthStatus()
+	case deployment.FieldCreatedBy:
+		return m.CreatedBy()
+	case deployment.FieldCreatedAt:
+		return m.CreatedAt()
+	case deployment.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case deployment.FieldCompletedAt:
+		return m.CompletedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *DeploymentMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case deployment.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case deployment.FieldServiceID:
+		return m.OldServiceID(ctx)
+	case deployment.FieldEnvironmentID:
+		return m.OldEnvironmentID(ctx)
+	case deployment.FieldClusterID:
+		return m.OldClusterID(ctx)
+	case deployment.FieldTemplateVersionID:
+		return m.OldTemplateVersionID(ctx)
+	case deployment.FieldVersion:
+		return m.OldVersion(ctx)
+	case deployment.FieldValuesOverride:
+		return m.OldValuesOverride(ctx)
+	case deployment.FieldStatus:
+		return m.OldStatus(ctx)
+	case deployment.FieldArgocdAppName:
+		return m.OldArgocdAppName(ctx)
+	case deployment.FieldSyncStatus:
+		return m.OldSyncStatus(ctx)
+	case deployment.FieldHealthStatus:
+		return m.OldHealthStatus(ctx)
+	case deployment.FieldCreatedBy:
+		return m.OldCreatedBy(ctx)
+	case deployment.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case deployment.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case deployment.FieldCompletedAt:
+		return m.OldCompletedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown Deployment field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DeploymentMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case deployment.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case deployment.FieldServiceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetServiceID(v)
+		return nil
+	case deployment.FieldEnvironmentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnvironmentID(v)
+		return nil
+	case deployment.FieldClusterID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClusterID(v)
+		return nil
+	case deployment.FieldTemplateVersionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTemplateVersionID(v)
+		return nil
+	case deployment.FieldVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	case deployment.FieldValuesOverride:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValuesOverride(v)
+		return nil
+	case deployment.FieldStatus:
+		v, ok := value.(deployment.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case deployment.FieldArgocdAppName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetArgocdAppName(v)
+		return nil
+	case deployment.FieldSyncStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSyncStatus(v)
+		return nil
+	case deployment.FieldHealthStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHealthStatus(v)
+		return nil
+	case deployment.FieldCreatedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedBy(v)
+		return nil
+	case deployment.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case deployment.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case deployment.FieldCompletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCompletedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Deployment field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *DeploymentMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *DeploymentMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DeploymentMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Deployment numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *DeploymentMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(deployment.FieldOrgID) {
+		fields = append(fields, deployment.FieldOrgID)
+	}
+	if m.FieldCleared(deployment.FieldValuesOverride) {
+		fields = append(fields, deployment.FieldValuesOverride)
+	}
+	if m.FieldCleared(deployment.FieldArgocdAppName) {
+		fields = append(fields, deployment.FieldArgocdAppName)
+	}
+	if m.FieldCleared(deployment.FieldSyncStatus) {
+		fields = append(fields, deployment.FieldSyncStatus)
+	}
+	if m.FieldCleared(deployment.FieldHealthStatus) {
+		fields = append(fields, deployment.FieldHealthStatus)
+	}
+	if m.FieldCleared(deployment.FieldCreatedBy) {
+		fields = append(fields, deployment.FieldCreatedBy)
+	}
+	if m.FieldCleared(deployment.FieldCompletedAt) {
+		fields = append(fields, deployment.FieldCompletedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *DeploymentMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *DeploymentMutation) ClearField(name string) error {
+	switch name {
+	case deployment.FieldOrgID:
+		m.ClearOrgID()
+		return nil
+	case deployment.FieldValuesOverride:
+		m.ClearValuesOverride()
+		return nil
+	case deployment.FieldArgocdAppName:
+		m.ClearArgocdAppName()
+		return nil
+	case deployment.FieldSyncStatus:
+		m.ClearSyncStatus()
+		return nil
+	case deployment.FieldHealthStatus:
+		m.ClearHealthStatus()
+		return nil
+	case deployment.FieldCreatedBy:
+		m.ClearCreatedBy()
+		return nil
+	case deployment.FieldCompletedAt:
+		m.ClearCompletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Deployment nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *DeploymentMutation) ResetField(name string) error {
+	switch name {
+	case deployment.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case deployment.FieldServiceID:
+		m.ResetServiceID()
+		return nil
+	case deployment.FieldEnvironmentID:
+		m.ResetEnvironmentID()
+		return nil
+	case deployment.FieldClusterID:
+		m.ResetClusterID()
+		return nil
+	case deployment.FieldTemplateVersionID:
+		m.ResetTemplateVersionID()
+		return nil
+	case deployment.FieldVersion:
+		m.ResetVersion()
+		return nil
+	case deployment.FieldValuesOverride:
+		m.ResetValuesOverride()
+		return nil
+	case deployment.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case deployment.FieldArgocdAppName:
+		m.ResetArgocdAppName()
+		return nil
+	case deployment.FieldSyncStatus:
+		m.ResetSyncStatus()
+		return nil
+	case deployment.FieldHealthStatus:
+		m.ResetHealthStatus()
+		return nil
+	case deployment.FieldCreatedBy:
+		m.ResetCreatedBy()
+		return nil
+	case deployment.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case deployment.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case deployment.FieldCompletedAt:
+		m.ResetCompletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Deployment field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *DeploymentMutation) AddedEdges() []string {
+	edges := make([]string, 0, 4)
+	if m.service != nil {
+		edges = append(edges, deployment.EdgeService)
+	}
+	if m.environment != nil {
+		edges = append(edges, deployment.EdgeEnvironment)
+	}
+	if m.cluster != nil {
+		edges = append(edges, deployment.EdgeCluster)
+	}
+	if m.organization != nil {
+		edges = append(edges, deployment.EdgeOrganization)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *DeploymentMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case deployment.EdgeService:
+		if id := m.service; id != nil {
+			return []ent.Value{*id}
+		}
+	case deployment.EdgeEnvironment:
+		if id := m.environment; id != nil {
+			return []ent.Value{*id}
+		}
+	case deployment.EdgeCluster:
+		if id := m.cluster; id != nil {
+			return []ent.Value{*id}
+		}
+	case deployment.EdgeOrganization:
+		if id := m.organization; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *DeploymentMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 4)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *DeploymentMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *DeploymentMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 4)
+	if m.clearedservice {
+		edges = append(edges, deployment.EdgeService)
+	}
+	if m.clearedenvironment {
+		edges = append(edges, deployment.EdgeEnvironment)
+	}
+	if m.clearedcluster {
+		edges = append(edges, deployment.EdgeCluster)
+	}
+	if m.clearedorganization {
+		edges = append(edges, deployment.EdgeOrganization)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *DeploymentMutation) EdgeCleared(name string) bool {
+	switch name {
+	case deployment.EdgeService:
+		return m.clearedservice
+	case deployment.EdgeEnvironment:
+		return m.clearedenvironment
+	case deployment.EdgeCluster:
+		return m.clearedcluster
+	case deployment.EdgeOrganization:
+		return m.clearedorganization
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *DeploymentMutation) ClearEdge(name string) error {
+	switch name {
+	case deployment.EdgeService:
+		m.ClearService()
+		return nil
+	case deployment.EdgeEnvironment:
+		m.ClearEnvironment()
+		return nil
+	case deployment.EdgeCluster:
+		m.ClearCluster()
+		return nil
+	case deployment.EdgeOrganization:
+		m.ClearOrganization()
+		return nil
+	}
+	return fmt.Errorf("unknown Deployment unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *DeploymentMutation) ResetEdge(name string) error {
+	switch name {
+	case deployment.EdgeService:
+		m.ResetService()
+		return nil
+	case deployment.EdgeEnvironment:
+		m.ResetEnvironment()
+		return nil
+	case deployment.EdgeCluster:
+		m.ResetCluster()
+		return nil
+	case deployment.EdgeOrganization:
+		m.ResetOrganization()
+		return nil
+	}
+	return fmt.Errorf("unknown Deployment edge %s", name)
 }
 
 // EnvironmentMutation represents an operation that mutates the Environment nodes in the graph.
@@ -1795,6 +3309,9 @@ type EnvironmentMutation struct {
 	clearedcluster      bool
 	organization        *string
 	clearedorganization bool
+	deployments         map[string]struct{}
+	removeddeployments  map[string]struct{}
+	cleareddeployments  bool
 	done                bool
 	oldValue            func(context.Context) (*Environment, error)
 	predicates          []predicate.Environment
@@ -2360,6 +3877,60 @@ func (m *EnvironmentMutation) ResetOrganization() {
 	m.clearedorganization = false
 }
 
+// AddDeploymentIDs adds the "deployments" edge to the Deployment entity by ids.
+func (m *EnvironmentMutation) AddDeploymentIDs(ids ...string) {
+	if m.deployments == nil {
+		m.deployments = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.deployments[ids[i]] = struct{}{}
+	}
+}
+
+// ClearDeployments clears the "deployments" edge to the Deployment entity.
+func (m *EnvironmentMutation) ClearDeployments() {
+	m.cleareddeployments = true
+}
+
+// DeploymentsCleared reports if the "deployments" edge to the Deployment entity was cleared.
+func (m *EnvironmentMutation) DeploymentsCleared() bool {
+	return m.cleareddeployments
+}
+
+// RemoveDeploymentIDs removes the "deployments" edge to the Deployment entity by IDs.
+func (m *EnvironmentMutation) RemoveDeploymentIDs(ids ...string) {
+	if m.removeddeployments == nil {
+		m.removeddeployments = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.deployments, ids[i])
+		m.removeddeployments[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedDeployments returns the removed IDs of the "deployments" edge to the Deployment entity.
+func (m *EnvironmentMutation) RemovedDeploymentsIDs() (ids []string) {
+	for id := range m.removeddeployments {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// DeploymentsIDs returns the "deployments" edge IDs in the mutation.
+func (m *EnvironmentMutation) DeploymentsIDs() (ids []string) {
+	for id := range m.deployments {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetDeployments resets all changes to the "deployments" edge.
+func (m *EnvironmentMutation) ResetDeployments() {
+	m.deployments = nil
+	m.cleareddeployments = false
+	m.removeddeployments = nil
+}
+
 // Where appends a list predicates to the EnvironmentMutation builder.
 func (m *EnvironmentMutation) Where(ps ...predicate.Environment) {
 	m.predicates = append(m.predicates, ps...)
@@ -2662,12 +4233,15 @@ func (m *EnvironmentMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *EnvironmentMutation) AddedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.cluster != nil {
 		edges = append(edges, environment.EdgeCluster)
 	}
 	if m.organization != nil {
 		edges = append(edges, environment.EdgeOrganization)
+	}
+	if m.deployments != nil {
+		edges = append(edges, environment.EdgeDeployments)
 	}
 	return edges
 }
@@ -2684,30 +4258,50 @@ func (m *EnvironmentMutation) AddedIDs(name string) []ent.Value {
 		if id := m.organization; id != nil {
 			return []ent.Value{*id}
 		}
+	case environment.EdgeDeployments:
+		ids := make([]ent.Value, 0, len(m.deployments))
+		for id := range m.deployments {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *EnvironmentMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
+	if m.removeddeployments != nil {
+		edges = append(edges, environment.EdgeDeployments)
+	}
 	return edges
 }
 
 // RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
 // the given name in this mutation.
 func (m *EnvironmentMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case environment.EdgeDeployments:
+		ids := make([]ent.Value, 0, len(m.removeddeployments))
+		for id := range m.removeddeployments {
+			ids = append(ids, id)
+		}
+		return ids
+	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *EnvironmentMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.clearedcluster {
 		edges = append(edges, environment.EdgeCluster)
 	}
 	if m.clearedorganization {
 		edges = append(edges, environment.EdgeOrganization)
+	}
+	if m.cleareddeployments {
+		edges = append(edges, environment.EdgeDeployments)
 	}
 	return edges
 }
@@ -2720,6 +4314,8 @@ func (m *EnvironmentMutation) EdgeCleared(name string) bool {
 		return m.clearedcluster
 	case environment.EdgeOrganization:
 		return m.clearedorganization
+	case environment.EdgeDeployments:
+		return m.cleareddeployments
 	}
 	return false
 }
@@ -2747,6 +4343,9 @@ func (m *EnvironmentMutation) ResetEdge(name string) error {
 		return nil
 	case environment.EdgeOrganization:
 		m.ResetOrganization()
+		return nil
+	case environment.EdgeDeployments:
+		m.ResetDeployments()
 		return nil
 	}
 	return fmt.Errorf("unknown Environment edge %s", name)
@@ -2783,6 +4382,9 @@ type OrganizationMutation struct {
 	templates           map[string]struct{}
 	removedtemplates    map[string]struct{}
 	clearedtemplates    bool
+	deployments         map[string]struct{}
+	removeddeployments  map[string]struct{}
+	cleareddeployments  bool
 	done                bool
 	oldValue            func(context.Context) (*Organization, error)
 	predicates          []predicate.Organization
@@ -3445,6 +5047,60 @@ func (m *OrganizationMutation) ResetTemplates() {
 	m.removedtemplates = nil
 }
 
+// AddDeploymentIDs adds the "deployments" edge to the Deployment entity by ids.
+func (m *OrganizationMutation) AddDeploymentIDs(ids ...string) {
+	if m.deployments == nil {
+		m.deployments = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.deployments[ids[i]] = struct{}{}
+	}
+}
+
+// ClearDeployments clears the "deployments" edge to the Deployment entity.
+func (m *OrganizationMutation) ClearDeployments() {
+	m.cleareddeployments = true
+}
+
+// DeploymentsCleared reports if the "deployments" edge to the Deployment entity was cleared.
+func (m *OrganizationMutation) DeploymentsCleared() bool {
+	return m.cleareddeployments
+}
+
+// RemoveDeploymentIDs removes the "deployments" edge to the Deployment entity by IDs.
+func (m *OrganizationMutation) RemoveDeploymentIDs(ids ...string) {
+	if m.removeddeployments == nil {
+		m.removeddeployments = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.deployments, ids[i])
+		m.removeddeployments[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedDeployments returns the removed IDs of the "deployments" edge to the Deployment entity.
+func (m *OrganizationMutation) RemovedDeploymentsIDs() (ids []string) {
+	for id := range m.removeddeployments {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// DeploymentsIDs returns the "deployments" edge IDs in the mutation.
+func (m *OrganizationMutation) DeploymentsIDs() (ids []string) {
+	for id := range m.deployments {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetDeployments resets all changes to the "deployments" edge.
+func (m *OrganizationMutation) ResetDeployments() {
+	m.deployments = nil
+	m.cleareddeployments = false
+	m.removeddeployments = nil
+}
+
 // Where appends a list predicates to the OrganizationMutation builder.
 func (m *OrganizationMutation) Where(ps ...predicate.Organization) {
 	m.predicates = append(m.predicates, ps...)
@@ -3672,7 +5328,7 @@ func (m *OrganizationMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *OrganizationMutation) AddedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.users != nil {
 		edges = append(edges, organization.EdgeUsers)
 	}
@@ -3690,6 +5346,9 @@ func (m *OrganizationMutation) AddedEdges() []string {
 	}
 	if m.templates != nil {
 		edges = append(edges, organization.EdgeTemplates)
+	}
+	if m.deployments != nil {
+		edges = append(edges, organization.EdgeDeployments)
 	}
 	return edges
 }
@@ -3734,13 +5393,19 @@ func (m *OrganizationMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case organization.EdgeDeployments:
+		ids := make([]ent.Value, 0, len(m.deployments))
+		for id := range m.deployments {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *OrganizationMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.removedusers != nil {
 		edges = append(edges, organization.EdgeUsers)
 	}
@@ -3758,6 +5423,9 @@ func (m *OrganizationMutation) RemovedEdges() []string {
 	}
 	if m.removedtemplates != nil {
 		edges = append(edges, organization.EdgeTemplates)
+	}
+	if m.removeddeployments != nil {
+		edges = append(edges, organization.EdgeDeployments)
 	}
 	return edges
 }
@@ -3802,13 +5470,19 @@ func (m *OrganizationMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case organization.EdgeDeployments:
+		ids := make([]ent.Value, 0, len(m.removeddeployments))
+		for id := range m.removeddeployments {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *OrganizationMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.clearedusers {
 		edges = append(edges, organization.EdgeUsers)
 	}
@@ -3826,6 +5500,9 @@ func (m *OrganizationMutation) ClearedEdges() []string {
 	}
 	if m.clearedtemplates {
 		edges = append(edges, organization.EdgeTemplates)
+	}
+	if m.cleareddeployments {
+		edges = append(edges, organization.EdgeDeployments)
 	}
 	return edges
 }
@@ -3846,6 +5523,8 @@ func (m *OrganizationMutation) EdgeCleared(name string) bool {
 		return m.clearedservices
 	case organization.EdgeTemplates:
 		return m.clearedtemplates
+	case organization.EdgeDeployments:
+		return m.cleareddeployments
 	}
 	return false
 }
@@ -3879,6 +5558,9 @@ func (m *OrganizationMutation) ResetEdge(name string) error {
 		return nil
 	case organization.EdgeTemplates:
 		m.ResetTemplates()
+		return nil
+	case organization.EdgeDeployments:
+		m.ResetDeployments()
 		return nil
 	}
 	return fmt.Errorf("unknown Organization edge %s", name)
@@ -5074,6 +6756,9 @@ type ServiceMutation struct {
 	clearedFields       map[string]struct{}
 	organization        *string
 	clearedorganization bool
+	deployments         map[string]struct{}
+	removeddeployments  map[string]struct{}
+	cleareddeployments  bool
 	done                bool
 	oldValue            func(context.Context) (*Service, error)
 	predicates          []predicate.Service
@@ -5661,6 +7346,60 @@ func (m *ServiceMutation) ResetOrganization() {
 	m.clearedorganization = false
 }
 
+// AddDeploymentIDs adds the "deployments" edge to the Deployment entity by ids.
+func (m *ServiceMutation) AddDeploymentIDs(ids ...string) {
+	if m.deployments == nil {
+		m.deployments = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.deployments[ids[i]] = struct{}{}
+	}
+}
+
+// ClearDeployments clears the "deployments" edge to the Deployment entity.
+func (m *ServiceMutation) ClearDeployments() {
+	m.cleareddeployments = true
+}
+
+// DeploymentsCleared reports if the "deployments" edge to the Deployment entity was cleared.
+func (m *ServiceMutation) DeploymentsCleared() bool {
+	return m.cleareddeployments
+}
+
+// RemoveDeploymentIDs removes the "deployments" edge to the Deployment entity by IDs.
+func (m *ServiceMutation) RemoveDeploymentIDs(ids ...string) {
+	if m.removeddeployments == nil {
+		m.removeddeployments = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.deployments, ids[i])
+		m.removeddeployments[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedDeployments returns the removed IDs of the "deployments" edge to the Deployment entity.
+func (m *ServiceMutation) RemovedDeploymentsIDs() (ids []string) {
+	for id := range m.removeddeployments {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// DeploymentsIDs returns the "deployments" edge IDs in the mutation.
+func (m *ServiceMutation) DeploymentsIDs() (ids []string) {
+	for id := range m.deployments {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetDeployments resets all changes to the "deployments" edge.
+func (m *ServiceMutation) ResetDeployments() {
+	m.deployments = nil
+	m.cleareddeployments = false
+	m.removeddeployments = nil
+}
+
 // Where appends a list predicates to the ServiceMutation builder.
 func (m *ServiceMutation) Where(ps ...predicate.Service) {
 	m.predicates = append(m.predicates, ps...)
@@ -5986,9 +7725,12 @@ func (m *ServiceMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ServiceMutation) AddedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.organization != nil {
 		edges = append(edges, service.EdgeOrganization)
+	}
+	if m.deployments != nil {
+		edges = append(edges, service.EdgeDeployments)
 	}
 	return edges
 }
@@ -6001,27 +7743,47 @@ func (m *ServiceMutation) AddedIDs(name string) []ent.Value {
 		if id := m.organization; id != nil {
 			return []ent.Value{*id}
 		}
+	case service.EdgeDeployments:
+		ids := make([]ent.Value, 0, len(m.deployments))
+		for id := range m.deployments {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ServiceMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
+	if m.removeddeployments != nil {
+		edges = append(edges, service.EdgeDeployments)
+	}
 	return edges
 }
 
 // RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
 // the given name in this mutation.
 func (m *ServiceMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case service.EdgeDeployments:
+		ids := make([]ent.Value, 0, len(m.removeddeployments))
+		for id := range m.removeddeployments {
+			ids = append(ids, id)
+		}
+		return ids
+	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ServiceMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.clearedorganization {
 		edges = append(edges, service.EdgeOrganization)
+	}
+	if m.cleareddeployments {
+		edges = append(edges, service.EdgeDeployments)
 	}
 	return edges
 }
@@ -6032,6 +7794,8 @@ func (m *ServiceMutation) EdgeCleared(name string) bool {
 	switch name {
 	case service.EdgeOrganization:
 		return m.clearedorganization
+	case service.EdgeDeployments:
+		return m.cleareddeployments
 	}
 	return false
 }
@@ -6053,6 +7817,9 @@ func (m *ServiceMutation) ResetEdge(name string) error {
 	switch name {
 	case service.EdgeOrganization:
 		m.ResetOrganization()
+		return nil
+	case service.EdgeDeployments:
+		m.ResetDeployments()
 		return nil
 	}
 	return fmt.Errorf("unknown Service edge %s", name)

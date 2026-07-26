@@ -4,7 +4,6 @@ package ent
 
 import (
 	"context"
-	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -17,56 +16,80 @@ import (
 	"github.com/whg517/fleet/internal/store/ent/environment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
 	"github.com/whg517/fleet/internal/store/ent/predicate"
+	"github.com/whg517/fleet/internal/store/ent/service"
 )
 
-// ClusterQuery is the builder for querying Cluster entities.
-type ClusterQuery struct {
+// DeploymentQuery is the builder for querying Deployment entities.
+type DeploymentQuery struct {
 	config
 	ctx              *QueryContext
-	order            []cluster.OrderOption
+	order            []deployment.OrderOption
 	inters           []Interceptor
-	predicates       []predicate.Cluster
-	withEnvironments *EnvironmentQuery
-	withDeployments  *DeploymentQuery
+	predicates       []predicate.Deployment
+	withService      *ServiceQuery
+	withEnvironment  *EnvironmentQuery
+	withCluster      *ClusterQuery
 	withOrganization *OrganizationQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
 }
 
-// Where adds a new predicate for the ClusterQuery builder.
-func (_q *ClusterQuery) Where(ps ...predicate.Cluster) *ClusterQuery {
+// Where adds a new predicate for the DeploymentQuery builder.
+func (_q *DeploymentQuery) Where(ps ...predicate.Deployment) *DeploymentQuery {
 	_q.predicates = append(_q.predicates, ps...)
 	return _q
 }
 
 // Limit the number of records to be returned by this query.
-func (_q *ClusterQuery) Limit(limit int) *ClusterQuery {
+func (_q *DeploymentQuery) Limit(limit int) *DeploymentQuery {
 	_q.ctx.Limit = &limit
 	return _q
 }
 
 // Offset to start from.
-func (_q *ClusterQuery) Offset(offset int) *ClusterQuery {
+func (_q *DeploymentQuery) Offset(offset int) *DeploymentQuery {
 	_q.ctx.Offset = &offset
 	return _q
 }
 
 // Unique configures the query builder to filter duplicate records on query.
 // By default, unique is set to true, and can be disabled using this method.
-func (_q *ClusterQuery) Unique(unique bool) *ClusterQuery {
+func (_q *DeploymentQuery) Unique(unique bool) *DeploymentQuery {
 	_q.ctx.Unique = &unique
 	return _q
 }
 
 // Order specifies how the records should be ordered.
-func (_q *ClusterQuery) Order(o ...cluster.OrderOption) *ClusterQuery {
+func (_q *DeploymentQuery) Order(o ...deployment.OrderOption) *DeploymentQuery {
 	_q.order = append(_q.order, o...)
 	return _q
 }
 
-// QueryEnvironments chains the current query on the "environments" edge.
-func (_q *ClusterQuery) QueryEnvironments() *EnvironmentQuery {
+// QueryService chains the current query on the "service" edge.
+func (_q *DeploymentQuery) QueryService() *ServiceQuery {
+	query := (&ServiceClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(deployment.Table, deployment.FieldID, selector),
+			sqlgraph.To(service.Table, service.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, deployment.ServiceTable, deployment.ServiceColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryEnvironment chains the current query on the "environment" edge.
+func (_q *DeploymentQuery) QueryEnvironment() *EnvironmentQuery {
 	query := (&EnvironmentClient{config: _q.config}).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
@@ -77,9 +100,9 @@ func (_q *ClusterQuery) QueryEnvironments() *EnvironmentQuery {
 			return nil, err
 		}
 		step := sqlgraph.NewStep(
-			sqlgraph.From(cluster.Table, cluster.FieldID, selector),
+			sqlgraph.From(deployment.Table, deployment.FieldID, selector),
 			sqlgraph.To(environment.Table, environment.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, cluster.EnvironmentsTable, cluster.EnvironmentsColumn),
+			sqlgraph.Edge(sqlgraph.M2O, true, deployment.EnvironmentTable, deployment.EnvironmentColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -87,9 +110,9 @@ func (_q *ClusterQuery) QueryEnvironments() *EnvironmentQuery {
 	return query
 }
 
-// QueryDeployments chains the current query on the "deployments" edge.
-func (_q *ClusterQuery) QueryDeployments() *DeploymentQuery {
-	query := (&DeploymentClient{config: _q.config}).Query()
+// QueryCluster chains the current query on the "cluster" edge.
+func (_q *DeploymentQuery) QueryCluster() *ClusterQuery {
+	query := (&ClusterClient{config: _q.config}).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
 			return nil, err
@@ -99,9 +122,9 @@ func (_q *ClusterQuery) QueryDeployments() *DeploymentQuery {
 			return nil, err
 		}
 		step := sqlgraph.NewStep(
-			sqlgraph.From(cluster.Table, cluster.FieldID, selector),
-			sqlgraph.To(deployment.Table, deployment.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, cluster.DeploymentsTable, cluster.DeploymentsColumn),
+			sqlgraph.From(deployment.Table, deployment.FieldID, selector),
+			sqlgraph.To(cluster.Table, cluster.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, deployment.ClusterTable, deployment.ClusterColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -110,7 +133,7 @@ func (_q *ClusterQuery) QueryDeployments() *DeploymentQuery {
 }
 
 // QueryOrganization chains the current query on the "organization" edge.
-func (_q *ClusterQuery) QueryOrganization() *OrganizationQuery {
+func (_q *DeploymentQuery) QueryOrganization() *OrganizationQuery {
 	query := (&OrganizationClient{config: _q.config}).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
@@ -121,9 +144,9 @@ func (_q *ClusterQuery) QueryOrganization() *OrganizationQuery {
 			return nil, err
 		}
 		step := sqlgraph.NewStep(
-			sqlgraph.From(cluster.Table, cluster.FieldID, selector),
+			sqlgraph.From(deployment.Table, deployment.FieldID, selector),
 			sqlgraph.To(organization.Table, organization.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, cluster.OrganizationTable, cluster.OrganizationColumn),
+			sqlgraph.Edge(sqlgraph.M2O, true, deployment.OrganizationTable, deployment.OrganizationColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -131,21 +154,21 @@ func (_q *ClusterQuery) QueryOrganization() *OrganizationQuery {
 	return query
 }
 
-// First returns the first Cluster entity from the query.
-// Returns a *NotFoundError when no Cluster was found.
-func (_q *ClusterQuery) First(ctx context.Context) (*Cluster, error) {
+// First returns the first Deployment entity from the query.
+// Returns a *NotFoundError when no Deployment was found.
+func (_q *DeploymentQuery) First(ctx context.Context) (*Deployment, error) {
 	nodes, err := _q.Limit(1).All(setContextOp(ctx, _q.ctx, ent.OpQueryFirst))
 	if err != nil {
 		return nil, err
 	}
 	if len(nodes) == 0 {
-		return nil, &NotFoundError{cluster.Label}
+		return nil, &NotFoundError{deployment.Label}
 	}
 	return nodes[0], nil
 }
 
 // FirstX is like First, but panics if an error occurs.
-func (_q *ClusterQuery) FirstX(ctx context.Context) *Cluster {
+func (_q *DeploymentQuery) FirstX(ctx context.Context) *Deployment {
 	node, err := _q.First(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -153,22 +176,22 @@ func (_q *ClusterQuery) FirstX(ctx context.Context) *Cluster {
 	return node
 }
 
-// FirstID returns the first Cluster ID from the query.
-// Returns a *NotFoundError when no Cluster ID was found.
-func (_q *ClusterQuery) FirstID(ctx context.Context) (id string, err error) {
+// FirstID returns the first Deployment ID from the query.
+// Returns a *NotFoundError when no Deployment ID was found.
+func (_q *DeploymentQuery) FirstID(ctx context.Context) (id string, err error) {
 	var ids []string
 	if ids, err = _q.Limit(1).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryFirstID)); err != nil {
 		return
 	}
 	if len(ids) == 0 {
-		err = &NotFoundError{cluster.Label}
+		err = &NotFoundError{deployment.Label}
 		return
 	}
 	return ids[0], nil
 }
 
 // FirstIDX is like FirstID, but panics if an error occurs.
-func (_q *ClusterQuery) FirstIDX(ctx context.Context) string {
+func (_q *DeploymentQuery) FirstIDX(ctx context.Context) string {
 	id, err := _q.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -176,10 +199,10 @@ func (_q *ClusterQuery) FirstIDX(ctx context.Context) string {
 	return id
 }
 
-// Only returns a single Cluster entity found by the query, ensuring it only returns one.
-// Returns a *NotSingularError when more than one Cluster entity is found.
-// Returns a *NotFoundError when no Cluster entities are found.
-func (_q *ClusterQuery) Only(ctx context.Context) (*Cluster, error) {
+// Only returns a single Deployment entity found by the query, ensuring it only returns one.
+// Returns a *NotSingularError when more than one Deployment entity is found.
+// Returns a *NotFoundError when no Deployment entities are found.
+func (_q *DeploymentQuery) Only(ctx context.Context) (*Deployment, error) {
 	nodes, err := _q.Limit(2).All(setContextOp(ctx, _q.ctx, ent.OpQueryOnly))
 	if err != nil {
 		return nil, err
@@ -188,14 +211,14 @@ func (_q *ClusterQuery) Only(ctx context.Context) (*Cluster, error) {
 	case 1:
 		return nodes[0], nil
 	case 0:
-		return nil, &NotFoundError{cluster.Label}
+		return nil, &NotFoundError{deployment.Label}
 	default:
-		return nil, &NotSingularError{cluster.Label}
+		return nil, &NotSingularError{deployment.Label}
 	}
 }
 
 // OnlyX is like Only, but panics if an error occurs.
-func (_q *ClusterQuery) OnlyX(ctx context.Context) *Cluster {
+func (_q *DeploymentQuery) OnlyX(ctx context.Context) *Deployment {
 	node, err := _q.Only(ctx)
 	if err != nil {
 		panic(err)
@@ -203,10 +226,10 @@ func (_q *ClusterQuery) OnlyX(ctx context.Context) *Cluster {
 	return node
 }
 
-// OnlyID is like Only, but returns the only Cluster ID in the query.
-// Returns a *NotSingularError when more than one Cluster ID is found.
+// OnlyID is like Only, but returns the only Deployment ID in the query.
+// Returns a *NotSingularError when more than one Deployment ID is found.
 // Returns a *NotFoundError when no entities are found.
-func (_q *ClusterQuery) OnlyID(ctx context.Context) (id string, err error) {
+func (_q *DeploymentQuery) OnlyID(ctx context.Context) (id string, err error) {
 	var ids []string
 	if ids, err = _q.Limit(2).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryOnlyID)); err != nil {
 		return
@@ -215,15 +238,15 @@ func (_q *ClusterQuery) OnlyID(ctx context.Context) (id string, err error) {
 	case 1:
 		id = ids[0]
 	case 0:
-		err = &NotFoundError{cluster.Label}
+		err = &NotFoundError{deployment.Label}
 	default:
-		err = &NotSingularError{cluster.Label}
+		err = &NotSingularError{deployment.Label}
 	}
 	return
 }
 
 // OnlyIDX is like OnlyID, but panics if an error occurs.
-func (_q *ClusterQuery) OnlyIDX(ctx context.Context) string {
+func (_q *DeploymentQuery) OnlyIDX(ctx context.Context) string {
 	id, err := _q.OnlyID(ctx)
 	if err != nil {
 		panic(err)
@@ -231,18 +254,18 @@ func (_q *ClusterQuery) OnlyIDX(ctx context.Context) string {
 	return id
 }
 
-// All executes the query and returns a list of Clusters.
-func (_q *ClusterQuery) All(ctx context.Context) ([]*Cluster, error) {
+// All executes the query and returns a list of Deployments.
+func (_q *DeploymentQuery) All(ctx context.Context) ([]*Deployment, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryAll)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return nil, err
 	}
-	qr := querierAll[[]*Cluster, *ClusterQuery]()
-	return withInterceptors[[]*Cluster](ctx, _q, qr, _q.inters)
+	qr := querierAll[[]*Deployment, *DeploymentQuery]()
+	return withInterceptors[[]*Deployment](ctx, _q, qr, _q.inters)
 }
 
 // AllX is like All, but panics if an error occurs.
-func (_q *ClusterQuery) AllX(ctx context.Context) []*Cluster {
+func (_q *DeploymentQuery) AllX(ctx context.Context) []*Deployment {
 	nodes, err := _q.All(ctx)
 	if err != nil {
 		panic(err)
@@ -250,20 +273,20 @@ func (_q *ClusterQuery) AllX(ctx context.Context) []*Cluster {
 	return nodes
 }
 
-// IDs executes the query and returns a list of Cluster IDs.
-func (_q *ClusterQuery) IDs(ctx context.Context) (ids []string, err error) {
+// IDs executes the query and returns a list of Deployment IDs.
+func (_q *DeploymentQuery) IDs(ctx context.Context) (ids []string, err error) {
 	if _q.ctx.Unique == nil && _q.path != nil {
 		_q.Unique(true)
 	}
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryIDs)
-	if err = _q.Select(cluster.FieldID).Scan(ctx, &ids); err != nil {
+	if err = _q.Select(deployment.FieldID).Scan(ctx, &ids); err != nil {
 		return nil, err
 	}
 	return ids, nil
 }
 
 // IDsX is like IDs, but panics if an error occurs.
-func (_q *ClusterQuery) IDsX(ctx context.Context) []string {
+func (_q *DeploymentQuery) IDsX(ctx context.Context) []string {
 	ids, err := _q.IDs(ctx)
 	if err != nil {
 		panic(err)
@@ -272,16 +295,16 @@ func (_q *ClusterQuery) IDsX(ctx context.Context) []string {
 }
 
 // Count returns the count of the given query.
-func (_q *ClusterQuery) Count(ctx context.Context) (int, error) {
+func (_q *DeploymentQuery) Count(ctx context.Context) (int, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryCount)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return 0, err
 	}
-	return withInterceptors[int](ctx, _q, querierCount[*ClusterQuery](), _q.inters)
+	return withInterceptors[int](ctx, _q, querierCount[*DeploymentQuery](), _q.inters)
 }
 
 // CountX is like Count, but panics if an error occurs.
-func (_q *ClusterQuery) CountX(ctx context.Context) int {
+func (_q *DeploymentQuery) CountX(ctx context.Context) int {
 	count, err := _q.Count(ctx)
 	if err != nil {
 		panic(err)
@@ -290,7 +313,7 @@ func (_q *ClusterQuery) CountX(ctx context.Context) int {
 }
 
 // Exist returns true if the query has elements in the graph.
-func (_q *ClusterQuery) Exist(ctx context.Context) (bool, error) {
+func (_q *DeploymentQuery) Exist(ctx context.Context) (bool, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryExist)
 	switch _, err := _q.FirstID(ctx); {
 	case IsNotFound(err):
@@ -303,7 +326,7 @@ func (_q *ClusterQuery) Exist(ctx context.Context) (bool, error) {
 }
 
 // ExistX is like Exist, but panics if an error occurs.
-func (_q *ClusterQuery) ExistX(ctx context.Context) bool {
+func (_q *DeploymentQuery) ExistX(ctx context.Context) bool {
 	exist, err := _q.Exist(ctx)
 	if err != nil {
 		panic(err)
@@ -311,20 +334,21 @@ func (_q *ClusterQuery) ExistX(ctx context.Context) bool {
 	return exist
 }
 
-// Clone returns a duplicate of the ClusterQuery builder, including all associated steps. It can be
+// Clone returns a duplicate of the DeploymentQuery builder, including all associated steps. It can be
 // used to prepare common query builders and use them differently after the clone is made.
-func (_q *ClusterQuery) Clone() *ClusterQuery {
+func (_q *DeploymentQuery) Clone() *DeploymentQuery {
 	if _q == nil {
 		return nil
 	}
-	return &ClusterQuery{
+	return &DeploymentQuery{
 		config:           _q.config,
 		ctx:              _q.ctx.Clone(),
-		order:            append([]cluster.OrderOption{}, _q.order...),
+		order:            append([]deployment.OrderOption{}, _q.order...),
 		inters:           append([]Interceptor{}, _q.inters...),
-		predicates:       append([]predicate.Cluster{}, _q.predicates...),
-		withEnvironments: _q.withEnvironments.Clone(),
-		withDeployments:  _q.withDeployments.Clone(),
+		predicates:       append([]predicate.Deployment{}, _q.predicates...),
+		withService:      _q.withService.Clone(),
+		withEnvironment:  _q.withEnvironment.Clone(),
+		withCluster:      _q.withCluster.Clone(),
 		withOrganization: _q.withOrganization.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
@@ -332,31 +356,42 @@ func (_q *ClusterQuery) Clone() *ClusterQuery {
 	}
 }
 
-// WithEnvironments tells the query-builder to eager-load the nodes that are connected to
-// the "environments" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *ClusterQuery) WithEnvironments(opts ...func(*EnvironmentQuery)) *ClusterQuery {
+// WithService tells the query-builder to eager-load the nodes that are connected to
+// the "service" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *DeploymentQuery) WithService(opts ...func(*ServiceQuery)) *DeploymentQuery {
+	query := (&ServiceClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withService = query
+	return _q
+}
+
+// WithEnvironment tells the query-builder to eager-load the nodes that are connected to
+// the "environment" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *DeploymentQuery) WithEnvironment(opts ...func(*EnvironmentQuery)) *DeploymentQuery {
 	query := (&EnvironmentClient{config: _q.config}).Query()
 	for _, opt := range opts {
 		opt(query)
 	}
-	_q.withEnvironments = query
+	_q.withEnvironment = query
 	return _q
 }
 
-// WithDeployments tells the query-builder to eager-load the nodes that are connected to
-// the "deployments" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *ClusterQuery) WithDeployments(opts ...func(*DeploymentQuery)) *ClusterQuery {
-	query := (&DeploymentClient{config: _q.config}).Query()
+// WithCluster tells the query-builder to eager-load the nodes that are connected to
+// the "cluster" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *DeploymentQuery) WithCluster(opts ...func(*ClusterQuery)) *DeploymentQuery {
+	query := (&ClusterClient{config: _q.config}).Query()
 	for _, opt := range opts {
 		opt(query)
 	}
-	_q.withDeployments = query
+	_q.withCluster = query
 	return _q
 }
 
 // WithOrganization tells the query-builder to eager-load the nodes that are connected to
 // the "organization" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *ClusterQuery) WithOrganization(opts ...func(*OrganizationQuery)) *ClusterQuery {
+func (_q *DeploymentQuery) WithOrganization(opts ...func(*OrganizationQuery)) *DeploymentQuery {
 	query := (&OrganizationClient{config: _q.config}).Query()
 	for _, opt := range opts {
 		opt(query)
@@ -375,15 +410,15 @@ func (_q *ClusterQuery) WithOrganization(opts ...func(*OrganizationQuery)) *Clus
 //		Count int `json:"count,omitempty"`
 //	}
 //
-//	client.Cluster.Query().
-//		GroupBy(cluster.FieldOrgID).
+//	client.Deployment.Query().
+//		GroupBy(deployment.FieldOrgID).
 //		Aggregate(ent.Count()).
 //		Scan(ctx, &v)
-func (_q *ClusterQuery) GroupBy(field string, fields ...string) *ClusterGroupBy {
+func (_q *DeploymentQuery) GroupBy(field string, fields ...string) *DeploymentGroupBy {
 	_q.ctx.Fields = append([]string{field}, fields...)
-	grbuild := &ClusterGroupBy{build: _q}
+	grbuild := &DeploymentGroupBy{build: _q}
 	grbuild.flds = &_q.ctx.Fields
-	grbuild.label = cluster.Label
+	grbuild.label = deployment.Label
 	grbuild.scan = grbuild.Scan
 	return grbuild
 }
@@ -397,23 +432,23 @@ func (_q *ClusterQuery) GroupBy(field string, fields ...string) *ClusterGroupBy 
 //		OrgID string `json:"org_id,omitempty"`
 //	}
 //
-//	client.Cluster.Query().
-//		Select(cluster.FieldOrgID).
+//	client.Deployment.Query().
+//		Select(deployment.FieldOrgID).
 //		Scan(ctx, &v)
-func (_q *ClusterQuery) Select(fields ...string) *ClusterSelect {
+func (_q *DeploymentQuery) Select(fields ...string) *DeploymentSelect {
 	_q.ctx.Fields = append(_q.ctx.Fields, fields...)
-	sbuild := &ClusterSelect{ClusterQuery: _q}
-	sbuild.label = cluster.Label
+	sbuild := &DeploymentSelect{DeploymentQuery: _q}
+	sbuild.label = deployment.Label
 	sbuild.flds, sbuild.scan = &_q.ctx.Fields, sbuild.Scan
 	return sbuild
 }
 
-// Aggregate returns a ClusterSelect configured with the given aggregations.
-func (_q *ClusterQuery) Aggregate(fns ...AggregateFunc) *ClusterSelect {
+// Aggregate returns a DeploymentSelect configured with the given aggregations.
+func (_q *DeploymentQuery) Aggregate(fns ...AggregateFunc) *DeploymentSelect {
 	return _q.Select().Aggregate(fns...)
 }
 
-func (_q *ClusterQuery) prepareQuery(ctx context.Context) error {
+func (_q *DeploymentQuery) prepareQuery(ctx context.Context) error {
 	for _, inter := range _q.inters {
 		if inter == nil {
 			return fmt.Errorf("ent: uninitialized interceptor (forgotten import ent/runtime?)")
@@ -425,7 +460,7 @@ func (_q *ClusterQuery) prepareQuery(ctx context.Context) error {
 		}
 	}
 	for _, f := range _q.ctx.Fields {
-		if !cluster.ValidColumn(f) {
+		if !deployment.ValidColumn(f) {
 			return &ValidationError{Name: f, err: fmt.Errorf("ent: invalid field %q for query", f)}
 		}
 	}
@@ -439,21 +474,22 @@ func (_q *ClusterQuery) prepareQuery(ctx context.Context) error {
 	return nil
 }
 
-func (_q *ClusterQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Cluster, error) {
+func (_q *DeploymentQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Deployment, error) {
 	var (
-		nodes       = []*Cluster{}
+		nodes       = []*Deployment{}
 		_spec       = _q.querySpec()
-		loadedTypes = [3]bool{
-			_q.withEnvironments != nil,
-			_q.withDeployments != nil,
+		loadedTypes = [4]bool{
+			_q.withService != nil,
+			_q.withEnvironment != nil,
+			_q.withCluster != nil,
 			_q.withOrganization != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
-		return (*Cluster).scanValues(nil, columns)
+		return (*Deployment).scanValues(nil, columns)
 	}
 	_spec.Assign = func(columns []string, values []any) error {
-		node := &Cluster{config: _q.config}
+		node := &Deployment{config: _q.config}
 		nodes = append(nodes, node)
 		node.Edges.loadedTypes = loadedTypes
 		return node.assignValues(columns, values)
@@ -467,92 +503,123 @@ func (_q *ClusterQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Clus
 	if len(nodes) == 0 {
 		return nodes, nil
 	}
-	if query := _q.withEnvironments; query != nil {
-		if err := _q.loadEnvironments(ctx, query, nodes,
-			func(n *Cluster) { n.Edges.Environments = []*Environment{} },
-			func(n *Cluster, e *Environment) { n.Edges.Environments = append(n.Edges.Environments, e) }); err != nil {
+	if query := _q.withService; query != nil {
+		if err := _q.loadService(ctx, query, nodes, nil,
+			func(n *Deployment, e *Service) { n.Edges.Service = e }); err != nil {
 			return nil, err
 		}
 	}
-	if query := _q.withDeployments; query != nil {
-		if err := _q.loadDeployments(ctx, query, nodes,
-			func(n *Cluster) { n.Edges.Deployments = []*Deployment{} },
-			func(n *Cluster, e *Deployment) { n.Edges.Deployments = append(n.Edges.Deployments, e) }); err != nil {
+	if query := _q.withEnvironment; query != nil {
+		if err := _q.loadEnvironment(ctx, query, nodes, nil,
+			func(n *Deployment, e *Environment) { n.Edges.Environment = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withCluster; query != nil {
+		if err := _q.loadCluster(ctx, query, nodes, nil,
+			func(n *Deployment, e *Cluster) { n.Edges.Cluster = e }); err != nil {
 			return nil, err
 		}
 	}
 	if query := _q.withOrganization; query != nil {
 		if err := _q.loadOrganization(ctx, query, nodes, nil,
-			func(n *Cluster, e *Organization) { n.Edges.Organization = e }); err != nil {
+			func(n *Deployment, e *Organization) { n.Edges.Organization = e }); err != nil {
 			return nil, err
 		}
 	}
 	return nodes, nil
 }
 
-func (_q *ClusterQuery) loadEnvironments(ctx context.Context, query *EnvironmentQuery, nodes []*Cluster, init func(*Cluster), assign func(*Cluster, *Environment)) error {
-	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[string]*Cluster)
-	for i := range nodes {
-		fks = append(fks, nodes[i].ID)
-		nodeids[nodes[i].ID] = nodes[i]
-		if init != nil {
-			init(nodes[i])
-		}
-	}
-	if len(query.ctx.Fields) > 0 {
-		query.ctx.AppendFieldOnce(environment.FieldClusterID)
-	}
-	query.Where(predicate.Environment(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(cluster.EnvironmentsColumn), fks...))
-	}))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		fk := n.ClusterID
-		node, ok := nodeids[fk]
-		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "cluster_id" returned %v for node %v`, fk, n.ID)
-		}
-		assign(node, n)
-	}
-	return nil
-}
-func (_q *ClusterQuery) loadDeployments(ctx context.Context, query *DeploymentQuery, nodes []*Cluster, init func(*Cluster), assign func(*Cluster, *Deployment)) error {
-	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[string]*Cluster)
-	for i := range nodes {
-		fks = append(fks, nodes[i].ID)
-		nodeids[nodes[i].ID] = nodes[i]
-		if init != nil {
-			init(nodes[i])
-		}
-	}
-	if len(query.ctx.Fields) > 0 {
-		query.ctx.AppendFieldOnce(deployment.FieldClusterID)
-	}
-	query.Where(predicate.Deployment(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(cluster.DeploymentsColumn), fks...))
-	}))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		fk := n.ClusterID
-		node, ok := nodeids[fk]
-		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "cluster_id" returned %v for node %v`, fk, n.ID)
-		}
-		assign(node, n)
-	}
-	return nil
-}
-func (_q *ClusterQuery) loadOrganization(ctx context.Context, query *OrganizationQuery, nodes []*Cluster, init func(*Cluster), assign func(*Cluster, *Organization)) error {
+func (_q *DeploymentQuery) loadService(ctx context.Context, query *ServiceQuery, nodes []*Deployment, init func(*Deployment), assign func(*Deployment, *Service)) error {
 	ids := make([]string, 0, len(nodes))
-	nodeids := make(map[string][]*Cluster)
+	nodeids := make(map[string][]*Deployment)
+	for i := range nodes {
+		fk := nodes[i].ServiceID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(service.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "service_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
+func (_q *DeploymentQuery) loadEnvironment(ctx context.Context, query *EnvironmentQuery, nodes []*Deployment, init func(*Deployment), assign func(*Deployment, *Environment)) error {
+	ids := make([]string, 0, len(nodes))
+	nodeids := make(map[string][]*Deployment)
+	for i := range nodes {
+		fk := nodes[i].EnvironmentID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(environment.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "environment_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
+func (_q *DeploymentQuery) loadCluster(ctx context.Context, query *ClusterQuery, nodes []*Deployment, init func(*Deployment), assign func(*Deployment, *Cluster)) error {
+	ids := make([]string, 0, len(nodes))
+	nodeids := make(map[string][]*Deployment)
+	for i := range nodes {
+		fk := nodes[i].ClusterID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(cluster.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "cluster_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
+func (_q *DeploymentQuery) loadOrganization(ctx context.Context, query *OrganizationQuery, nodes []*Deployment, init func(*Deployment), assign func(*Deployment, *Organization)) error {
+	ids := make([]string, 0, len(nodes))
+	nodeids := make(map[string][]*Deployment)
 	for i := range nodes {
 		fk := nodes[i].OrgID
 		if _, ok := nodeids[fk]; !ok {
@@ -580,7 +647,7 @@ func (_q *ClusterQuery) loadOrganization(ctx context.Context, query *Organizatio
 	return nil
 }
 
-func (_q *ClusterQuery) sqlCount(ctx context.Context) (int, error) {
+func (_q *DeploymentQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
 	_spec.Node.Columns = _q.ctx.Fields
 	if len(_q.ctx.Fields) > 0 {
@@ -589,8 +656,8 @@ func (_q *ClusterQuery) sqlCount(ctx context.Context) (int, error) {
 	return sqlgraph.CountNodes(ctx, _q.driver, _spec)
 }
 
-func (_q *ClusterQuery) querySpec() *sqlgraph.QuerySpec {
-	_spec := sqlgraph.NewQuerySpec(cluster.Table, cluster.Columns, sqlgraph.NewFieldSpec(cluster.FieldID, field.TypeString))
+func (_q *DeploymentQuery) querySpec() *sqlgraph.QuerySpec {
+	_spec := sqlgraph.NewQuerySpec(deployment.Table, deployment.Columns, sqlgraph.NewFieldSpec(deployment.FieldID, field.TypeString))
 	_spec.From = _q.sql
 	if unique := _q.ctx.Unique; unique != nil {
 		_spec.Unique = *unique
@@ -599,14 +666,23 @@ func (_q *ClusterQuery) querySpec() *sqlgraph.QuerySpec {
 	}
 	if fields := _q.ctx.Fields; len(fields) > 0 {
 		_spec.Node.Columns = make([]string, 0, len(fields))
-		_spec.Node.Columns = append(_spec.Node.Columns, cluster.FieldID)
+		_spec.Node.Columns = append(_spec.Node.Columns, deployment.FieldID)
 		for i := range fields {
-			if fields[i] != cluster.FieldID {
+			if fields[i] != deployment.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 			}
 		}
+		if _q.withService != nil {
+			_spec.Node.AddColumnOnce(deployment.FieldServiceID)
+		}
+		if _q.withEnvironment != nil {
+			_spec.Node.AddColumnOnce(deployment.FieldEnvironmentID)
+		}
+		if _q.withCluster != nil {
+			_spec.Node.AddColumnOnce(deployment.FieldClusterID)
+		}
 		if _q.withOrganization != nil {
-			_spec.Node.AddColumnOnce(cluster.FieldOrgID)
+			_spec.Node.AddColumnOnce(deployment.FieldOrgID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {
@@ -632,12 +708,12 @@ func (_q *ClusterQuery) querySpec() *sqlgraph.QuerySpec {
 	return _spec
 }
 
-func (_q *ClusterQuery) sqlQuery(ctx context.Context) *sql.Selector {
+func (_q *DeploymentQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	builder := sql.Dialect(_q.driver.Dialect())
-	t1 := builder.Table(cluster.Table)
+	t1 := builder.Table(deployment.Table)
 	columns := _q.ctx.Fields
 	if len(columns) == 0 {
-		columns = cluster.Columns
+		columns = deployment.Columns
 	}
 	selector := builder.Select(t1.Columns(columns...)...).From(t1)
 	if _q.sql != nil {
@@ -664,28 +740,28 @@ func (_q *ClusterQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	return selector
 }
 
-// ClusterGroupBy is the group-by builder for Cluster entities.
-type ClusterGroupBy struct {
+// DeploymentGroupBy is the group-by builder for Deployment entities.
+type DeploymentGroupBy struct {
 	selector
-	build *ClusterQuery
+	build *DeploymentQuery
 }
 
 // Aggregate adds the given aggregation functions to the group-by query.
-func (_g *ClusterGroupBy) Aggregate(fns ...AggregateFunc) *ClusterGroupBy {
+func (_g *DeploymentGroupBy) Aggregate(fns ...AggregateFunc) *DeploymentGroupBy {
 	_g.fns = append(_g.fns, fns...)
 	return _g
 }
 
 // Scan applies the selector query and scans the result into the given value.
-func (_g *ClusterGroupBy) Scan(ctx context.Context, v any) error {
+func (_g *DeploymentGroupBy) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _g.build.ctx, ent.OpQueryGroupBy)
 	if err := _g.build.prepareQuery(ctx); err != nil {
 		return err
 	}
-	return scanWithInterceptors[*ClusterQuery, *ClusterGroupBy](ctx, _g.build, _g, _g.build.inters, v)
+	return scanWithInterceptors[*DeploymentQuery, *DeploymentGroupBy](ctx, _g.build, _g, _g.build.inters, v)
 }
 
-func (_g *ClusterGroupBy) sqlScan(ctx context.Context, root *ClusterQuery, v any) error {
+func (_g *DeploymentGroupBy) sqlScan(ctx context.Context, root *DeploymentQuery, v any) error {
 	selector := root.sqlQuery(ctx).Select()
 	aggregation := make([]string, 0, len(_g.fns))
 	for _, fn := range _g.fns {
@@ -712,28 +788,28 @@ func (_g *ClusterGroupBy) sqlScan(ctx context.Context, root *ClusterQuery, v any
 	return sql.ScanSlice(rows, v)
 }
 
-// ClusterSelect is the builder for selecting fields of Cluster entities.
-type ClusterSelect struct {
-	*ClusterQuery
+// DeploymentSelect is the builder for selecting fields of Deployment entities.
+type DeploymentSelect struct {
+	*DeploymentQuery
 	selector
 }
 
 // Aggregate adds the given aggregation functions to the selector query.
-func (_s *ClusterSelect) Aggregate(fns ...AggregateFunc) *ClusterSelect {
+func (_s *DeploymentSelect) Aggregate(fns ...AggregateFunc) *DeploymentSelect {
 	_s.fns = append(_s.fns, fns...)
 	return _s
 }
 
 // Scan applies the selector query and scans the result into the given value.
-func (_s *ClusterSelect) Scan(ctx context.Context, v any) error {
+func (_s *DeploymentSelect) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _s.ctx, ent.OpQuerySelect)
 	if err := _s.prepareQuery(ctx); err != nil {
 		return err
 	}
-	return scanWithInterceptors[*ClusterQuery, *ClusterSelect](ctx, _s.ClusterQuery, _s, _s.inters, v)
+	return scanWithInterceptors[*DeploymentQuery, *DeploymentSelect](ctx, _s.DeploymentQuery, _s, _s.inters, v)
 }
 
-func (_s *ClusterSelect) sqlScan(ctx context.Context, root *ClusterQuery, v any) error {
+func (_s *DeploymentSelect) sqlScan(ctx context.Context, root *DeploymentQuery, v any) error {
 	selector := root.sqlQuery(ctx)
 	aggregation := make([]string, 0, len(_s.fns))
 	for _, fn := range _s.fns {

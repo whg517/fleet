@@ -31,6 +31,7 @@ func (Cluster) Fields() []ent.Field {
 func (Cluster) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("environments", Environment.Type),
+		edge.To("deployments", Deployment.Type),
 		edge.From("organization", Organization.Type).
 			Ref("clusters").
 			Field("org_id").

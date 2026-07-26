@@ -7,6 +7,7 @@ import (
 
 	"github.com/whg517/fleet/internal/store/ent/auditlog"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
+	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/environment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
 	"github.com/whg517/fleet/internal/store/ent/registry"
@@ -56,6 +57,38 @@ func init() {
 	cluster.DefaultUpdatedAt = clusterDescUpdatedAt.Default.(func() time.Time)
 	// cluster.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	cluster.UpdateDefaultUpdatedAt = clusterDescUpdatedAt.UpdateDefault.(func() time.Time)
+	deploymentFields := schema.Deployment{}.Fields()
+	_ = deploymentFields
+	// deploymentDescServiceID is the schema descriptor for service_id field.
+	deploymentDescServiceID := deploymentFields[2].Descriptor()
+	// deployment.ServiceIDValidator is a validator for the "service_id" field. It is called by the builders before save.
+	deployment.ServiceIDValidator = deploymentDescServiceID.Validators[0].(func(string) error)
+	// deploymentDescEnvironmentID is the schema descriptor for environment_id field.
+	deploymentDescEnvironmentID := deploymentFields[3].Descriptor()
+	// deployment.EnvironmentIDValidator is a validator for the "environment_id" field. It is called by the builders before save.
+	deployment.EnvironmentIDValidator = deploymentDescEnvironmentID.Validators[0].(func(string) error)
+	// deploymentDescClusterID is the schema descriptor for cluster_id field.
+	deploymentDescClusterID := deploymentFields[4].Descriptor()
+	// deployment.ClusterIDValidator is a validator for the "cluster_id" field. It is called by the builders before save.
+	deployment.ClusterIDValidator = deploymentDescClusterID.Validators[0].(func(string) error)
+	// deploymentDescTemplateVersionID is the schema descriptor for template_version_id field.
+	deploymentDescTemplateVersionID := deploymentFields[5].Descriptor()
+	// deployment.TemplateVersionIDValidator is a validator for the "template_version_id" field. It is called by the builders before save.
+	deployment.TemplateVersionIDValidator = deploymentDescTemplateVersionID.Validators[0].(func(string) error)
+	// deploymentDescVersion is the schema descriptor for version field.
+	deploymentDescVersion := deploymentFields[6].Descriptor()
+	// deployment.VersionValidator is a validator for the "version" field. It is called by the builders before save.
+	deployment.VersionValidator = deploymentDescVersion.Validators[0].(func(string) error)
+	// deploymentDescCreatedAt is the schema descriptor for created_at field.
+	deploymentDescCreatedAt := deploymentFields[13].Descriptor()
+	// deployment.DefaultCreatedAt holds the default value on creation for the created_at field.
+	deployment.DefaultCreatedAt = deploymentDescCreatedAt.Default.(func() time.Time)
+	// deploymentDescUpdatedAt is the schema descriptor for updated_at field.
+	deploymentDescUpdatedAt := deploymentFields[14].Descriptor()
+	// deployment.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	deployment.DefaultUpdatedAt = deploymentDescUpdatedAt.Default.(func() time.Time)
+	// deployment.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	deployment.UpdateDefaultUpdatedAt = deploymentDescUpdatedAt.UpdateDefault.(func() time.Time)
 	environmentFields := schema.Environment{}.Fields()
 	_ = environmentFields
 	// environmentDescApprovalRequired is the schema descriptor for approval_required field.

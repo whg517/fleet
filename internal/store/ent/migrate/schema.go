@@ -91,6 +91,84 @@ var (
 			},
 		},
 	}
+	// DeploymentsColumns holds the columns for the "deployments" table.
+	DeploymentsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "template_version_id", Type: field.TypeString},
+		{Name: "version", Type: field.TypeString},
+		{Name: "values_override", Type: field.TypeJSON, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "validating", "deploying", "healthy", "degraded", "failed", "cancelled"}, Default: "pending"},
+		{Name: "argocd_app_name", Type: field.TypeString, Nullable: true},
+		{Name: "sync_status", Type: field.TypeString, Nullable: true},
+		{Name: "health_status", Type: field.TypeString, Nullable: true},
+		{Name: "created_by", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "cluster_id", Type: field.TypeString},
+		{Name: "environment_id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "service_id", Type: field.TypeString},
+	}
+	// DeploymentsTable holds the schema information for the "deployments" table.
+	DeploymentsTable = &schema.Table{
+		Name:       "deployments",
+		Columns:    DeploymentsColumns,
+		PrimaryKey: []*schema.Column{DeploymentsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "deployments_clusters_deployments",
+				Columns:    []*schema.Column{DeploymentsColumns[12]},
+				RefColumns: []*schema.Column{ClustersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "deployments_environments_deployments",
+				Columns:    []*schema.Column{DeploymentsColumns[13]},
+				RefColumns: []*schema.Column{EnvironmentsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "deployments_organizations_deployments",
+				Columns:    []*schema.Column{DeploymentsColumns[14]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "deployments_services_deployments",
+				Columns:    []*schema.Column{DeploymentsColumns[15]},
+				RefColumns: []*schema.Column{ServicesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "deployment_org_id",
+				Unique:  false,
+				Columns: []*schema.Column{DeploymentsColumns[14]},
+			},
+			{
+				Name:    "deployment_service_id",
+				Unique:  false,
+				Columns: []*schema.Column{DeploymentsColumns[15]},
+			},
+			{
+				Name:    "deployment_environment_id",
+				Unique:  false,
+				Columns: []*schema.Column{DeploymentsColumns[13]},
+			},
+			{
+				Name:    "deployment_status",
+				Unique:  false,
+				Columns: []*schema.Column{DeploymentsColumns[4]},
+			},
+			{
+				Name:    "deployment_service_id_environment_id",
+				Unique:  false,
+				Columns: []*schema.Column{DeploymentsColumns[15], DeploymentsColumns[13]},
+			},
+		},
+	}
 	// EnvironmentsColumns holds the columns for the "environments" table.
 	EnvironmentsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -456,6 +534,7 @@ var (
 	Tables = []*schema.Table{
 		AuditLogsTable,
 		ClustersTable,
+		DeploymentsTable,
 		EnvironmentsTable,
 		OrganizationsTable,
 		RegistriesTable,
@@ -470,6 +549,10 @@ var (
 
 func init() {
 	ClustersTable.ForeignKeys[0].RefTable = OrganizationsTable
+	DeploymentsTable.ForeignKeys[0].RefTable = ClustersTable
+	DeploymentsTable.ForeignKeys[1].RefTable = EnvironmentsTable
+	DeploymentsTable.ForeignKeys[2].RefTable = OrganizationsTable
+	DeploymentsTable.ForeignKeys[3].RefTable = ServicesTable
 	EnvironmentsTable.ForeignKeys[0].RefTable = ClustersTable
 	EnvironmentsTable.ForeignKeys[1].RefTable = OrganizationsTable
 	RegistriesTable.ForeignKeys[0].RefTable = OrganizationsTable

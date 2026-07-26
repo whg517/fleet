@@ -39,6 +39,8 @@ const (
 	EdgeServices = "services"
 	// EdgeTemplates holds the string denoting the templates edge name in mutations.
 	EdgeTemplates = "templates"
+	// EdgeDeployments holds the string denoting the deployments edge name in mutations.
+	EdgeDeployments = "deployments"
 	// Table holds the table name of the organization in the database.
 	Table = "organizations"
 	// UsersTable is the table that holds the users relation/edge.
@@ -83,6 +85,13 @@ const (
 	TemplatesInverseTable = "templates"
 	// TemplatesColumn is the table column denoting the templates relation/edge.
 	TemplatesColumn = "org_id"
+	// DeploymentsTable is the table that holds the deployments relation/edge.
+	DeploymentsTable = "deployments"
+	// DeploymentsInverseTable is the table name for the Deployment entity.
+	// It exists in this package in order to avoid circular dependency with the "deployment" package.
+	DeploymentsInverseTable = "deployments"
+	// DeploymentsColumn is the table column denoting the deployments relation/edge.
+	DeploymentsColumn = "org_id"
 )
 
 // Columns holds all SQL columns for organization fields.
@@ -264,6 +273,20 @@ func ByTemplates(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newTemplatesStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByDeploymentsCount orders the results by deployments count.
+func ByDeploymentsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newDeploymentsStep(), opts...)
+	}
+}
+
+// ByDeployments orders the results by deployments terms.
+func ByDeployments(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newDeploymentsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newUsersStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -304,5 +327,12 @@ func newTemplatesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(TemplatesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, TemplatesTable, TemplatesColumn),
+	)
+}
+func newDeploymentsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(DeploymentsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, DeploymentsTable, DeploymentsColumn),
 	)
 }

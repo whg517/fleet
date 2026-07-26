@@ -4,6 +4,8 @@ go 1.26.0
 
 require (
 	entgo.io/ent v0.14.5
+	github.com/casbin/casbin/v2 v2.135.0
+	github.com/casbin/gorm-adapter/v3 v3.41.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.15.0
@@ -12,6 +14,8 @@ require (
 	github.com/redis/go-redis/v9 v9.12.0
 	github.com/spf13/viper v1.20.1
 	go.uber.org/zap v1.27.0
+	gorm.io/driver/postgres v1.6.0
+	gorm.io/gorm v1.31.2
 	k8s.io/client-go v0.36.2
 	modernc.org/sqlite v1.54.0
 	sigs.k8s.io/yaml v1.6.0
@@ -24,9 +28,7 @@ require (
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.9.1 // indirect
-	github.com/casbin/casbin/v2 v2.135.0 // indirect
 	github.com/casbin/casbin/v3 v3.8.1 // indirect
-	github.com/casbin/gorm-adapter/v3 v3.41.0 // indirect
 	github.com/casbin/govaluate v1.10.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -99,9 +101,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/mysql v1.6.0 // indirect
-	gorm.io/driver/postgres v1.6.0 // indirect
 	gorm.io/driver/sqlserver v1.6.3 // indirect
-	gorm.io/gorm v1.31.2 // indirect
 	gorm.io/plugin/dbresolver v1.6.2 // indirect
 	k8s.io/api v0.36.2 // indirect
 	k8s.io/apimachinery v0.36.2 // indirect
