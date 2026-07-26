@@ -60,3 +60,8 @@ func (a *DeploymentArgoCDAdapter) RollbackApplication(ctx context.Context, name,
 func (a *DeploymentArgoCDAdapter) DeleteApplication(ctx context.Context, name string) error {
 	return a.client.DeleteApplication(ctx, name)
 }
+
+// UpdateApplication implements deployment.ArgoCDClient.
+func (a *DeploymentArgoCDAdapter) UpdateApplication(ctx context.Context, name string, values map[string]any) error {
+	return a.client.UpdateApplication(ctx, name, values)
+}

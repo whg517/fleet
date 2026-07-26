@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/whg517/fleet/internal/store/ent/auditlog"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
+	"github.com/whg517/fleet/internal/store/ent/configsnapshot"
 	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/environment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
@@ -37,6 +38,7 @@ const (
 	// Node types.
 	TypeAuditLog        = "AuditLog"
 	TypeCluster         = "Cluster"
+	TypeConfigSnapshot  = "ConfigSnapshot"
 	TypeDeployment      = "Deployment"
 	TypeEnvironment     = "Environment"
 	TypeOrganization    = "Organization"
@@ -1862,6 +1864,973 @@ func (m *ClusterMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Cluster edge %s", name)
 }
 
+// ConfigSnapshotMutation represents an operation that mutates the ConfigSnapshot nodes in the graph.
+type ConfigSnapshotMutation struct {
+	config
+	op                  Op
+	typ                 string
+	id                  *string
+	values              *map[string]interface{}
+	previous_values     *map[string]interface{}
+	changed_by          *string
+	change_reason       *string
+	created_at          *time.Time
+	clearedFields       map[string]struct{}
+	service             *string
+	clearedservice      bool
+	environment         *string
+	clearedenvironment  bool
+	organization        *string
+	clearedorganization bool
+	done                bool
+	oldValue            func(context.Context) (*ConfigSnapshot, error)
+	predicates          []predicate.ConfigSnapshot
+}
+
+var _ ent.Mutation = (*ConfigSnapshotMutation)(nil)
+
+// configsnapshotOption allows management of the mutation configuration using functional options.
+type configsnapshotOption func(*ConfigSnapshotMutation)
+
+// newConfigSnapshotMutation creates new mutation for the ConfigSnapshot entity.
+func newConfigSnapshotMutation(c config, op Op, opts ...configsnapshotOption) *ConfigSnapshotMutation {
+	m := &ConfigSnapshotMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeConfigSnapshot,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withConfigSnapshotID sets the ID field of the mutation.
+func withConfigSnapshotID(id string) configsnapshotOption {
+	return func(m *ConfigSnapshotMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ConfigSnapshot
+		)
+		m.oldValue = func(ctx context.Context) (*ConfigSnapshot, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ConfigSnapshot.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withConfigSnapshot sets the old ConfigSnapshot of the mutation.
+func withConfigSnapshot(node *ConfigSnapshot) configsnapshotOption {
+	return func(m *ConfigSnapshotMutation) {
+		m.oldValue = func(context.Context) (*ConfigSnapshot, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ConfigSnapshotMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ConfigSnapshotMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of ConfigSnapshot entities.
+func (m *ConfigSnapshotMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ConfigSnapshotMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ConfigSnapshotMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ConfigSnapshot.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetOrgID sets the "org_id" field.
+func (m *ConfigSnapshotMutation) SetOrgID(s string) {
+	m.organization = &s
+}
+
+// OrgID returns the value of the "org_id" field in the mutation.
+func (m *ConfigSnapshotMutation) OrgID() (r string, exists bool) {
+	v := m.organization
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOrgID returns the old "org_id" field's value of the ConfigSnapshot entity.
+// If the ConfigSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConfigSnapshotMutation) OldOrgID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOrgID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOrgID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOrgID: %w", err)
+	}
+	return oldValue.OrgID, nil
+}
+
+// ClearOrgID clears the value of the "org_id" field.
+func (m *ConfigSnapshotMutation) ClearOrgID() {
+	m.organization = nil
+	m.clearedFields[configsnapshot.FieldOrgID] = struct{}{}
+}
+
+// OrgIDCleared returns if the "org_id" field was cleared in this mutation.
+func (m *ConfigSnapshotMutation) OrgIDCleared() bool {
+	_, ok := m.clearedFields[configsnapshot.FieldOrgID]
+	return ok
+}
+
+// ResetOrgID resets all changes to the "org_id" field.
+func (m *ConfigSnapshotMutation) ResetOrgID() {
+	m.organization = nil
+	delete(m.clearedFields, configsnapshot.FieldOrgID)
+}
+
+// SetServiceID sets the "service_id" field.
+func (m *ConfigSnapshotMutation) SetServiceID(s string) {
+	m.service = &s
+}
+
+// ServiceID returns the value of the "service_id" field in the mutation.
+func (m *ConfigSnapshotMutation) ServiceID() (r string, exists bool) {
+	v := m.service
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldServiceID returns the old "service_id" field's value of the ConfigSnapshot entity.
+// If the ConfigSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConfigSnapshotMutation) OldServiceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldServiceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldServiceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldServiceID: %w", err)
+	}
+	return oldValue.ServiceID, nil
+}
+
+// ResetServiceID resets all changes to the "service_id" field.
+func (m *ConfigSnapshotMutation) ResetServiceID() {
+	m.service = nil
+}
+
+// SetEnvironmentID sets the "environment_id" field.
+func (m *ConfigSnapshotMutation) SetEnvironmentID(s string) {
+	m.environment = &s
+}
+
+// EnvironmentID returns the value of the "environment_id" field in the mutation.
+func (m *ConfigSnapshotMutation) EnvironmentID() (r string, exists bool) {
+	v := m.environment
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnvironmentID returns the old "environment_id" field's value of the ConfigSnapshot entity.
+// If the ConfigSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConfigSnapshotMutation) OldEnvironmentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnvironmentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnvironmentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnvironmentID: %w", err)
+	}
+	return oldValue.EnvironmentID, nil
+}
+
+// ResetEnvironmentID resets all changes to the "environment_id" field.
+func (m *ConfigSnapshotMutation) ResetEnvironmentID() {
+	m.environment = nil
+}
+
+// SetValues sets the "values" field.
+func (m *ConfigSnapshotMutation) SetValues(value map[string]interface{}) {
+	m.values = &value
+}
+
+// Values returns the value of the "values" field in the mutation.
+func (m *ConfigSnapshotMutation) Values() (r map[string]interface{}, exists bool) {
+	v := m.values
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValues returns the old "values" field's value of the ConfigSnapshot entity.
+// If the ConfigSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConfigSnapshotMutation) OldValues(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValues is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValues requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValues: %w", err)
+	}
+	return oldValue.Values, nil
+}
+
+// ClearValues clears the value of the "values" field.
+func (m *ConfigSnapshotMutation) ClearValues() {
+	m.values = nil
+	m.clearedFields[configsnapshot.FieldValues] = struct{}{}
+}
+
+// ValuesCleared returns if the "values" field was cleared in this mutation.
+func (m *ConfigSnapshotMutation) ValuesCleared() bool {
+	_, ok := m.clearedFields[configsnapshot.FieldValues]
+	return ok
+}
+
+// ResetValues resets all changes to the "values" field.
+func (m *ConfigSnapshotMutation) ResetValues() {
+	m.values = nil
+	delete(m.clearedFields, configsnapshot.FieldValues)
+}
+
+// SetPreviousValues sets the "previous_values" field.
+func (m *ConfigSnapshotMutation) SetPreviousValues(value map[string]interface{}) {
+	m.previous_values = &value
+}
+
+// PreviousValues returns the value of the "previous_values" field in the mutation.
+func (m *ConfigSnapshotMutation) PreviousValues() (r map[string]interface{}, exists bool) {
+	v := m.previous_values
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPreviousValues returns the old "previous_values" field's value of the ConfigSnapshot entity.
+// If the ConfigSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConfigSnapshotMutation) OldPreviousValues(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPreviousValues is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPreviousValues requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPreviousValues: %w", err)
+	}
+	return oldValue.PreviousValues, nil
+}
+
+// ClearPreviousValues clears the value of the "previous_values" field.
+func (m *ConfigSnapshotMutation) ClearPreviousValues() {
+	m.previous_values = nil
+	m.clearedFields[configsnapshot.FieldPreviousValues] = struct{}{}
+}
+
+// PreviousValuesCleared returns if the "previous_values" field was cleared in this mutation.
+func (m *ConfigSnapshotMutation) PreviousValuesCleared() bool {
+	_, ok := m.clearedFields[configsnapshot.FieldPreviousValues]
+	return ok
+}
+
+// ResetPreviousValues resets all changes to the "previous_values" field.
+func (m *ConfigSnapshotMutation) ResetPreviousValues() {
+	m.previous_values = nil
+	delete(m.clearedFields, configsnapshot.FieldPreviousValues)
+}
+
+// SetChangedBy sets the "changed_by" field.
+func (m *ConfigSnapshotMutation) SetChangedBy(s string) {
+	m.changed_by = &s
+}
+
+// ChangedBy returns the value of the "changed_by" field in the mutation.
+func (m *ConfigSnapshotMutation) ChangedBy() (r string, exists bool) {
+	v := m.changed_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChangedBy returns the old "changed_by" field's value of the ConfigSnapshot entity.
+// If the ConfigSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConfigSnapshotMutation) OldChangedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChangedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChangedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChangedBy: %w", err)
+	}
+	return oldValue.ChangedBy, nil
+}
+
+// ClearChangedBy clears the value of the "changed_by" field.
+func (m *ConfigSnapshotMutation) ClearChangedBy() {
+	m.changed_by = nil
+	m.clearedFields[configsnapshot.FieldChangedBy] = struct{}{}
+}
+
+// ChangedByCleared returns if the "changed_by" field was cleared in this mutation.
+func (m *ConfigSnapshotMutation) ChangedByCleared() bool {
+	_, ok := m.clearedFields[configsnapshot.FieldChangedBy]
+	return ok
+}
+
+// ResetChangedBy resets all changes to the "changed_by" field.
+func (m *ConfigSnapshotMutation) ResetChangedBy() {
+	m.changed_by = nil
+	delete(m.clearedFields, configsnapshot.FieldChangedBy)
+}
+
+// SetChangeReason sets the "change_reason" field.
+func (m *ConfigSnapshotMutation) SetChangeReason(s string) {
+	m.change_reason = &s
+}
+
+// ChangeReason returns the value of the "change_reason" field in the mutation.
+func (m *ConfigSnapshotMutation) ChangeReason() (r string, exists bool) {
+	v := m.change_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChangeReason returns the old "change_reason" field's value of the ConfigSnapshot entity.
+// If the ConfigSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConfigSnapshotMutation) OldChangeReason(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChangeReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChangeReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChangeReason: %w", err)
+	}
+	return oldValue.ChangeReason, nil
+}
+
+// ClearChangeReason clears the value of the "change_reason" field.
+func (m *ConfigSnapshotMutation) ClearChangeReason() {
+	m.change_reason = nil
+	m.clearedFields[configsnapshot.FieldChangeReason] = struct{}{}
+}
+
+// ChangeReasonCleared returns if the "change_reason" field was cleared in this mutation.
+func (m *ConfigSnapshotMutation) ChangeReasonCleared() bool {
+	_, ok := m.clearedFields[configsnapshot.FieldChangeReason]
+	return ok
+}
+
+// ResetChangeReason resets all changes to the "change_reason" field.
+func (m *ConfigSnapshotMutation) ResetChangeReason() {
+	m.change_reason = nil
+	delete(m.clearedFields, configsnapshot.FieldChangeReason)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ConfigSnapshotMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ConfigSnapshotMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ConfigSnapshot entity.
+// If the ConfigSnapshot object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ConfigSnapshotMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ConfigSnapshotMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// ClearService clears the "service" edge to the Service entity.
+func (m *ConfigSnapshotMutation) ClearService() {
+	m.clearedservice = true
+	m.clearedFields[configsnapshot.FieldServiceID] = struct{}{}
+}
+
+// ServiceCleared reports if the "service" edge to the Service entity was cleared.
+func (m *ConfigSnapshotMutation) ServiceCleared() bool {
+	return m.clearedservice
+}
+
+// ServiceIDs returns the "service" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ServiceID instead. It exists only for internal usage by the builders.
+func (m *ConfigSnapshotMutation) ServiceIDs() (ids []string) {
+	if id := m.service; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetService resets all changes to the "service" edge.
+func (m *ConfigSnapshotMutation) ResetService() {
+	m.service = nil
+	m.clearedservice = false
+}
+
+// ClearEnvironment clears the "environment" edge to the Environment entity.
+func (m *ConfigSnapshotMutation) ClearEnvironment() {
+	m.clearedenvironment = true
+	m.clearedFields[configsnapshot.FieldEnvironmentID] = struct{}{}
+}
+
+// EnvironmentCleared reports if the "environment" edge to the Environment entity was cleared.
+func (m *ConfigSnapshotMutation) EnvironmentCleared() bool {
+	return m.clearedenvironment
+}
+
+// EnvironmentIDs returns the "environment" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// EnvironmentID instead. It exists only for internal usage by the builders.
+func (m *ConfigSnapshotMutation) EnvironmentIDs() (ids []string) {
+	if id := m.environment; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetEnvironment resets all changes to the "environment" edge.
+func (m *ConfigSnapshotMutation) ResetEnvironment() {
+	m.environment = nil
+	m.clearedenvironment = false
+}
+
+// SetOrganizationID sets the "organization" edge to the Organization entity by id.
+func (m *ConfigSnapshotMutation) SetOrganizationID(id string) {
+	m.organization = &id
+}
+
+// ClearOrganization clears the "organization" edge to the Organization entity.
+func (m *ConfigSnapshotMutation) ClearOrganization() {
+	m.clearedorganization = true
+	m.clearedFields[configsnapshot.FieldOrgID] = struct{}{}
+}
+
+// OrganizationCleared reports if the "organization" edge to the Organization entity was cleared.
+func (m *ConfigSnapshotMutation) OrganizationCleared() bool {
+	return m.OrgIDCleared() || m.clearedorganization
+}
+
+// OrganizationID returns the "organization" edge ID in the mutation.
+func (m *ConfigSnapshotMutation) OrganizationID() (id string, exists bool) {
+	if m.organization != nil {
+		return *m.organization, true
+	}
+	return
+}
+
+// OrganizationIDs returns the "organization" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// OrganizationID instead. It exists only for internal usage by the builders.
+func (m *ConfigSnapshotMutation) OrganizationIDs() (ids []string) {
+	if id := m.organization; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetOrganization resets all changes to the "organization" edge.
+func (m *ConfigSnapshotMutation) ResetOrganization() {
+	m.organization = nil
+	m.clearedorganization = false
+}
+
+// Where appends a list predicates to the ConfigSnapshotMutation builder.
+func (m *ConfigSnapshotMutation) Where(ps ...predicate.ConfigSnapshot) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ConfigSnapshotMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ConfigSnapshotMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ConfigSnapshot, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ConfigSnapshotMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ConfigSnapshotMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ConfigSnapshot).
+func (m *ConfigSnapshotMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ConfigSnapshotMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.organization != nil {
+		fields = append(fields, configsnapshot.FieldOrgID)
+	}
+	if m.service != nil {
+		fields = append(fields, configsnapshot.FieldServiceID)
+	}
+	if m.environment != nil {
+		fields = append(fields, configsnapshot.FieldEnvironmentID)
+	}
+	if m.values != nil {
+		fields = append(fields, configsnapshot.FieldValues)
+	}
+	if m.previous_values != nil {
+		fields = append(fields, configsnapshot.FieldPreviousValues)
+	}
+	if m.changed_by != nil {
+		fields = append(fields, configsnapshot.FieldChangedBy)
+	}
+	if m.change_reason != nil {
+		fields = append(fields, configsnapshot.FieldChangeReason)
+	}
+	if m.created_at != nil {
+		fields = append(fields, configsnapshot.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ConfigSnapshotMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case configsnapshot.FieldOrgID:
+		return m.OrgID()
+	case configsnapshot.FieldServiceID:
+		return m.ServiceID()
+	case configsnapshot.FieldEnvironmentID:
+		return m.EnvironmentID()
+	case configsnapshot.FieldValues:
+		return m.Values()
+	case configsnapshot.FieldPreviousValues:
+		return m.PreviousValues()
+	case configsnapshot.FieldChangedBy:
+		return m.ChangedBy()
+	case configsnapshot.FieldChangeReason:
+		return m.ChangeReason()
+	case configsnapshot.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ConfigSnapshotMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case configsnapshot.FieldOrgID:
+		return m.OldOrgID(ctx)
+	case configsnapshot.FieldServiceID:
+		return m.OldServiceID(ctx)
+	case configsnapshot.FieldEnvironmentID:
+		return m.OldEnvironmentID(ctx)
+	case configsnapshot.FieldValues:
+		return m.OldValues(ctx)
+	case configsnapshot.FieldPreviousValues:
+		return m.OldPreviousValues(ctx)
+	case configsnapshot.FieldChangedBy:
+		return m.OldChangedBy(ctx)
+	case configsnapshot.FieldChangeReason:
+		return m.OldChangeReason(ctx)
+	case configsnapshot.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ConfigSnapshot field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ConfigSnapshotMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case configsnapshot.FieldOrgID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOrgID(v)
+		return nil
+	case configsnapshot.FieldServiceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetServiceID(v)
+		return nil
+	case configsnapshot.FieldEnvironmentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnvironmentID(v)
+		return nil
+	case configsnapshot.FieldValues:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValues(v)
+		return nil
+	case configsnapshot.FieldPreviousValues:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPreviousValues(v)
+		return nil
+	case configsnapshot.FieldChangedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChangedBy(v)
+		return nil
+	case configsnapshot.FieldChangeReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChangeReason(v)
+		return nil
+	case configsnapshot.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ConfigSnapshot field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ConfigSnapshotMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ConfigSnapshotMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ConfigSnapshotMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown ConfigSnapshot numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ConfigSnapshotMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(configsnapshot.FieldOrgID) {
+		fields = append(fields, configsnapshot.FieldOrgID)
+	}
+	if m.FieldCleared(configsnapshot.FieldValues) {
+		fields = append(fields, configsnapshot.FieldValues)
+	}
+	if m.FieldCleared(configsnapshot.FieldPreviousValues) {
+		fields = append(fields, configsnapshot.FieldPreviousValues)
+	}
+	if m.FieldCleared(configsnapshot.FieldChangedBy) {
+		fields = append(fields, configsnapshot.FieldChangedBy)
+	}
+	if m.FieldCleared(configsnapshot.FieldChangeReason) {
+		fields = append(fields, configsnapshot.FieldChangeReason)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ConfigSnapshotMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ConfigSnapshotMutation) ClearField(name string) error {
+	switch name {
+	case configsnapshot.FieldOrgID:
+		m.ClearOrgID()
+		return nil
+	case configsnapshot.FieldValues:
+		m.ClearValues()
+		return nil
+	case configsnapshot.FieldPreviousValues:
+		m.ClearPreviousValues()
+		return nil
+	case configsnapshot.FieldChangedBy:
+		m.ClearChangedBy()
+		return nil
+	case configsnapshot.FieldChangeReason:
+		m.ClearChangeReason()
+		return nil
+	}
+	return fmt.Errorf("unknown ConfigSnapshot nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ConfigSnapshotMutation) ResetField(name string) error {
+	switch name {
+	case configsnapshot.FieldOrgID:
+		m.ResetOrgID()
+		return nil
+	case configsnapshot.FieldServiceID:
+		m.ResetServiceID()
+		return nil
+	case configsnapshot.FieldEnvironmentID:
+		m.ResetEnvironmentID()
+		return nil
+	case configsnapshot.FieldValues:
+		m.ResetValues()
+		return nil
+	case configsnapshot.FieldPreviousValues:
+		m.ResetPreviousValues()
+		return nil
+	case configsnapshot.FieldChangedBy:
+		m.ResetChangedBy()
+		return nil
+	case configsnapshot.FieldChangeReason:
+		m.ResetChangeReason()
+		return nil
+	case configsnapshot.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ConfigSnapshot field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ConfigSnapshotMutation) AddedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.service != nil {
+		edges = append(edges, configsnapshot.EdgeService)
+	}
+	if m.environment != nil {
+		edges = append(edges, configsnapshot.EdgeEnvironment)
+	}
+	if m.organization != nil {
+		edges = append(edges, configsnapshot.EdgeOrganization)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ConfigSnapshotMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case configsnapshot.EdgeService:
+		if id := m.service; id != nil {
+			return []ent.Value{*id}
+		}
+	case configsnapshot.EdgeEnvironment:
+		if id := m.environment; id != nil {
+			return []ent.Value{*id}
+		}
+	case configsnapshot.EdgeOrganization:
+		if id := m.organization; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ConfigSnapshotMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 3)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ConfigSnapshotMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ConfigSnapshotMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 3)
+	if m.clearedservice {
+		edges = append(edges, configsnapshot.EdgeService)
+	}
+	if m.clearedenvironment {
+		edges = append(edges, configsnapshot.EdgeEnvironment)
+	}
+	if m.clearedorganization {
+		edges = append(edges, configsnapshot.EdgeOrganization)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ConfigSnapshotMutation) EdgeCleared(name string) bool {
+	switch name {
+	case configsnapshot.EdgeService:
+		return m.clearedservice
+	case configsnapshot.EdgeEnvironment:
+		return m.clearedenvironment
+	case configsnapshot.EdgeOrganization:
+		return m.clearedorganization
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ConfigSnapshotMutation) ClearEdge(name string) error {
+	switch name {
+	case configsnapshot.EdgeService:
+		m.ClearService()
+		return nil
+	case configsnapshot.EdgeEnvironment:
+		m.ClearEnvironment()
+		return nil
+	case configsnapshot.EdgeOrganization:
+		m.ClearOrganization()
+		return nil
+	}
+	return fmt.Errorf("unknown ConfigSnapshot unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ConfigSnapshotMutation) ResetEdge(name string) error {
+	switch name {
+	case configsnapshot.EdgeService:
+		m.ResetService()
+		return nil
+	case configsnapshot.EdgeEnvironment:
+		m.ResetEnvironment()
+		return nil
+	case configsnapshot.EdgeOrganization:
+		m.ResetOrganization()
+		return nil
+	}
+	return fmt.Errorf("unknown ConfigSnapshot edge %s", name)
+}
+
 // DeploymentMutation represents an operation that mutates the Deployment nodes in the graph.
 type DeploymentMutation struct {
 	config
@@ -3294,27 +4263,30 @@ func (m *DeploymentMutation) ResetEdge(name string) error {
 // EnvironmentMutation represents an operation that mutates the Environment nodes in the graph.
 type EnvironmentMutation struct {
 	config
-	op                  Op
-	typ                 string
-	id                  *string
-	name                *environment.Name
-	namespace_pattern   *string
-	approval_required   *bool
-	approver_role       *string
-	config_overrides    *map[string]interface{}
-	created_at          *time.Time
-	updated_at          *time.Time
-	clearedFields       map[string]struct{}
-	cluster             *string
-	clearedcluster      bool
-	organization        *string
-	clearedorganization bool
-	deployments         map[string]struct{}
-	removeddeployments  map[string]struct{}
-	cleareddeployments  bool
-	done                bool
-	oldValue            func(context.Context) (*Environment, error)
-	predicates          []predicate.Environment
+	op                      Op
+	typ                     string
+	id                      *string
+	name                    *environment.Name
+	namespace_pattern       *string
+	approval_required       *bool
+	approver_role           *string
+	config_overrides        *map[string]interface{}
+	created_at              *time.Time
+	updated_at              *time.Time
+	clearedFields           map[string]struct{}
+	cluster                 *string
+	clearedcluster          bool
+	organization            *string
+	clearedorganization     bool
+	deployments             map[string]struct{}
+	removeddeployments      map[string]struct{}
+	cleareddeployments      bool
+	config_snapshots        map[string]struct{}
+	removedconfig_snapshots map[string]struct{}
+	clearedconfig_snapshots bool
+	done                    bool
+	oldValue                func(context.Context) (*Environment, error)
+	predicates              []predicate.Environment
 }
 
 var _ ent.Mutation = (*EnvironmentMutation)(nil)
@@ -3931,6 +4903,60 @@ func (m *EnvironmentMutation) ResetDeployments() {
 	m.removeddeployments = nil
 }
 
+// AddConfigSnapshotIDs adds the "config_snapshots" edge to the ConfigSnapshot entity by ids.
+func (m *EnvironmentMutation) AddConfigSnapshotIDs(ids ...string) {
+	if m.config_snapshots == nil {
+		m.config_snapshots = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.config_snapshots[ids[i]] = struct{}{}
+	}
+}
+
+// ClearConfigSnapshots clears the "config_snapshots" edge to the ConfigSnapshot entity.
+func (m *EnvironmentMutation) ClearConfigSnapshots() {
+	m.clearedconfig_snapshots = true
+}
+
+// ConfigSnapshotsCleared reports if the "config_snapshots" edge to the ConfigSnapshot entity was cleared.
+func (m *EnvironmentMutation) ConfigSnapshotsCleared() bool {
+	return m.clearedconfig_snapshots
+}
+
+// RemoveConfigSnapshotIDs removes the "config_snapshots" edge to the ConfigSnapshot entity by IDs.
+func (m *EnvironmentMutation) RemoveConfigSnapshotIDs(ids ...string) {
+	if m.removedconfig_snapshots == nil {
+		m.removedconfig_snapshots = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.config_snapshots, ids[i])
+		m.removedconfig_snapshots[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedConfigSnapshots returns the removed IDs of the "config_snapshots" edge to the ConfigSnapshot entity.
+func (m *EnvironmentMutation) RemovedConfigSnapshotsIDs() (ids []string) {
+	for id := range m.removedconfig_snapshots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ConfigSnapshotsIDs returns the "config_snapshots" edge IDs in the mutation.
+func (m *EnvironmentMutation) ConfigSnapshotsIDs() (ids []string) {
+	for id := range m.config_snapshots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetConfigSnapshots resets all changes to the "config_snapshots" edge.
+func (m *EnvironmentMutation) ResetConfigSnapshots() {
+	m.config_snapshots = nil
+	m.clearedconfig_snapshots = false
+	m.removedconfig_snapshots = nil
+}
+
 // Where appends a list predicates to the EnvironmentMutation builder.
 func (m *EnvironmentMutation) Where(ps ...predicate.Environment) {
 	m.predicates = append(m.predicates, ps...)
@@ -4233,7 +5259,7 @@ func (m *EnvironmentMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *EnvironmentMutation) AddedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.cluster != nil {
 		edges = append(edges, environment.EdgeCluster)
 	}
@@ -4242,6 +5268,9 @@ func (m *EnvironmentMutation) AddedEdges() []string {
 	}
 	if m.deployments != nil {
 		edges = append(edges, environment.EdgeDeployments)
+	}
+	if m.config_snapshots != nil {
+		edges = append(edges, environment.EdgeConfigSnapshots)
 	}
 	return edges
 }
@@ -4264,15 +5293,24 @@ func (m *EnvironmentMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case environment.EdgeConfigSnapshots:
+		ids := make([]ent.Value, 0, len(m.config_snapshots))
+		for id := range m.config_snapshots {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *EnvironmentMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.removeddeployments != nil {
 		edges = append(edges, environment.EdgeDeployments)
+	}
+	if m.removedconfig_snapshots != nil {
+		edges = append(edges, environment.EdgeConfigSnapshots)
 	}
 	return edges
 }
@@ -4287,13 +5325,19 @@ func (m *EnvironmentMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case environment.EdgeConfigSnapshots:
+		ids := make([]ent.Value, 0, len(m.removedconfig_snapshots))
+		for id := range m.removedconfig_snapshots {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *EnvironmentMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.clearedcluster {
 		edges = append(edges, environment.EdgeCluster)
 	}
@@ -4302,6 +5346,9 @@ func (m *EnvironmentMutation) ClearedEdges() []string {
 	}
 	if m.cleareddeployments {
 		edges = append(edges, environment.EdgeDeployments)
+	}
+	if m.clearedconfig_snapshots {
+		edges = append(edges, environment.EdgeConfigSnapshots)
 	}
 	return edges
 }
@@ -4316,6 +5363,8 @@ func (m *EnvironmentMutation) EdgeCleared(name string) bool {
 		return m.clearedorganization
 	case environment.EdgeDeployments:
 		return m.cleareddeployments
+	case environment.EdgeConfigSnapshots:
+		return m.clearedconfig_snapshots
 	}
 	return false
 }
@@ -4347,6 +5396,9 @@ func (m *EnvironmentMutation) ResetEdge(name string) error {
 	case environment.EdgeDeployments:
 		m.ResetDeployments()
 		return nil
+	case environment.EdgeConfigSnapshots:
+		m.ResetConfigSnapshots()
+		return nil
 	}
 	return fmt.Errorf("unknown Environment edge %s", name)
 }
@@ -4354,40 +5406,43 @@ func (m *EnvironmentMutation) ResetEdge(name string) error {
 // OrganizationMutation represents an operation that mutates the Organization nodes in the graph.
 type OrganizationMutation struct {
 	config
-	op                  Op
-	typ                 string
-	id                  *string
-	name                *string
-	slug                *string
-	description         *string
-	status              *organization.Status
-	created_at          *time.Time
-	updated_at          *time.Time
-	clearedFields       map[string]struct{}
-	users               map[string]struct{}
-	removedusers        map[string]struct{}
-	clearedusers        bool
-	clusters            map[string]struct{}
-	removedclusters     map[string]struct{}
-	clearedclusters     bool
-	environments        map[string]struct{}
-	removedenvironments map[string]struct{}
-	clearedenvironments bool
-	registries          map[string]struct{}
-	removedregistries   map[string]struct{}
-	clearedregistries   bool
-	services            map[string]struct{}
-	removedservices     map[string]struct{}
-	clearedservices     bool
-	templates           map[string]struct{}
-	removedtemplates    map[string]struct{}
-	clearedtemplates    bool
-	deployments         map[string]struct{}
-	removeddeployments  map[string]struct{}
-	cleareddeployments  bool
-	done                bool
-	oldValue            func(context.Context) (*Organization, error)
-	predicates          []predicate.Organization
+	op                      Op
+	typ                     string
+	id                      *string
+	name                    *string
+	slug                    *string
+	description             *string
+	status                  *organization.Status
+	created_at              *time.Time
+	updated_at              *time.Time
+	clearedFields           map[string]struct{}
+	users                   map[string]struct{}
+	removedusers            map[string]struct{}
+	clearedusers            bool
+	clusters                map[string]struct{}
+	removedclusters         map[string]struct{}
+	clearedclusters         bool
+	environments            map[string]struct{}
+	removedenvironments     map[string]struct{}
+	clearedenvironments     bool
+	registries              map[string]struct{}
+	removedregistries       map[string]struct{}
+	clearedregistries       bool
+	services                map[string]struct{}
+	removedservices         map[string]struct{}
+	clearedservices         bool
+	templates               map[string]struct{}
+	removedtemplates        map[string]struct{}
+	clearedtemplates        bool
+	deployments             map[string]struct{}
+	removeddeployments      map[string]struct{}
+	cleareddeployments      bool
+	config_snapshots        map[string]struct{}
+	removedconfig_snapshots map[string]struct{}
+	clearedconfig_snapshots bool
+	done                    bool
+	oldValue                func(context.Context) (*Organization, error)
+	predicates              []predicate.Organization
 }
 
 var _ ent.Mutation = (*OrganizationMutation)(nil)
@@ -5101,6 +6156,60 @@ func (m *OrganizationMutation) ResetDeployments() {
 	m.removeddeployments = nil
 }
 
+// AddConfigSnapshotIDs adds the "config_snapshots" edge to the ConfigSnapshot entity by ids.
+func (m *OrganizationMutation) AddConfigSnapshotIDs(ids ...string) {
+	if m.config_snapshots == nil {
+		m.config_snapshots = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.config_snapshots[ids[i]] = struct{}{}
+	}
+}
+
+// ClearConfigSnapshots clears the "config_snapshots" edge to the ConfigSnapshot entity.
+func (m *OrganizationMutation) ClearConfigSnapshots() {
+	m.clearedconfig_snapshots = true
+}
+
+// ConfigSnapshotsCleared reports if the "config_snapshots" edge to the ConfigSnapshot entity was cleared.
+func (m *OrganizationMutation) ConfigSnapshotsCleared() bool {
+	return m.clearedconfig_snapshots
+}
+
+// RemoveConfigSnapshotIDs removes the "config_snapshots" edge to the ConfigSnapshot entity by IDs.
+func (m *OrganizationMutation) RemoveConfigSnapshotIDs(ids ...string) {
+	if m.removedconfig_snapshots == nil {
+		m.removedconfig_snapshots = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.config_snapshots, ids[i])
+		m.removedconfig_snapshots[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedConfigSnapshots returns the removed IDs of the "config_snapshots" edge to the ConfigSnapshot entity.
+func (m *OrganizationMutation) RemovedConfigSnapshotsIDs() (ids []string) {
+	for id := range m.removedconfig_snapshots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ConfigSnapshotsIDs returns the "config_snapshots" edge IDs in the mutation.
+func (m *OrganizationMutation) ConfigSnapshotsIDs() (ids []string) {
+	for id := range m.config_snapshots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetConfigSnapshots resets all changes to the "config_snapshots" edge.
+func (m *OrganizationMutation) ResetConfigSnapshots() {
+	m.config_snapshots = nil
+	m.clearedconfig_snapshots = false
+	m.removedconfig_snapshots = nil
+}
+
 // Where appends a list predicates to the OrganizationMutation builder.
 func (m *OrganizationMutation) Where(ps ...predicate.Organization) {
 	m.predicates = append(m.predicates, ps...)
@@ -5328,7 +6437,7 @@ func (m *OrganizationMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *OrganizationMutation) AddedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 8)
 	if m.users != nil {
 		edges = append(edges, organization.EdgeUsers)
 	}
@@ -5349,6 +6458,9 @@ func (m *OrganizationMutation) AddedEdges() []string {
 	}
 	if m.deployments != nil {
 		edges = append(edges, organization.EdgeDeployments)
+	}
+	if m.config_snapshots != nil {
+		edges = append(edges, organization.EdgeConfigSnapshots)
 	}
 	return edges
 }
@@ -5399,13 +6511,19 @@ func (m *OrganizationMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case organization.EdgeConfigSnapshots:
+		ids := make([]ent.Value, 0, len(m.config_snapshots))
+		for id := range m.config_snapshots {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *OrganizationMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 8)
 	if m.removedusers != nil {
 		edges = append(edges, organization.EdgeUsers)
 	}
@@ -5426,6 +6544,9 @@ func (m *OrganizationMutation) RemovedEdges() []string {
 	}
 	if m.removeddeployments != nil {
 		edges = append(edges, organization.EdgeDeployments)
+	}
+	if m.removedconfig_snapshots != nil {
+		edges = append(edges, organization.EdgeConfigSnapshots)
 	}
 	return edges
 }
@@ -5476,13 +6597,19 @@ func (m *OrganizationMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case organization.EdgeConfigSnapshots:
+		ids := make([]ent.Value, 0, len(m.removedconfig_snapshots))
+		for id := range m.removedconfig_snapshots {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *OrganizationMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 7)
+	edges := make([]string, 0, 8)
 	if m.clearedusers {
 		edges = append(edges, organization.EdgeUsers)
 	}
@@ -5503,6 +6630,9 @@ func (m *OrganizationMutation) ClearedEdges() []string {
 	}
 	if m.cleareddeployments {
 		edges = append(edges, organization.EdgeDeployments)
+	}
+	if m.clearedconfig_snapshots {
+		edges = append(edges, organization.EdgeConfigSnapshots)
 	}
 	return edges
 }
@@ -5525,6 +6655,8 @@ func (m *OrganizationMutation) EdgeCleared(name string) bool {
 		return m.clearedtemplates
 	case organization.EdgeDeployments:
 		return m.cleareddeployments
+	case organization.EdgeConfigSnapshots:
+		return m.clearedconfig_snapshots
 	}
 	return false
 }
@@ -5561,6 +6693,9 @@ func (m *OrganizationMutation) ResetEdge(name string) error {
 		return nil
 	case organization.EdgeDeployments:
 		m.ResetDeployments()
+		return nil
+	case organization.EdgeConfigSnapshots:
+		m.ResetConfigSnapshots()
 		return nil
 	}
 	return fmt.Errorf("unknown Organization edge %s", name)
@@ -6741,27 +7876,30 @@ func (m *RoleMutation) ResetEdge(name string) error {
 // ServiceMutation represents an operation that mutates the Service nodes in the graph.
 type ServiceMutation struct {
 	config
-	op                  Op
-	typ                 string
-	id                  *string
-	name                *string
-	team                *string
-	description         *string
-	labels              *map[string]string
-	status              *service.Status
-	harbor_project      *string
-	git_repo            *string
-	created_at          *time.Time
-	updated_at          *time.Time
-	clearedFields       map[string]struct{}
-	organization        *string
-	clearedorganization bool
-	deployments         map[string]struct{}
-	removeddeployments  map[string]struct{}
-	cleareddeployments  bool
-	done                bool
-	oldValue            func(context.Context) (*Service, error)
-	predicates          []predicate.Service
+	op                      Op
+	typ                     string
+	id                      *string
+	name                    *string
+	team                    *string
+	description             *string
+	labels                  *map[string]string
+	status                  *service.Status
+	harbor_project          *string
+	git_repo                *string
+	created_at              *time.Time
+	updated_at              *time.Time
+	clearedFields           map[string]struct{}
+	organization            *string
+	clearedorganization     bool
+	deployments             map[string]struct{}
+	removeddeployments      map[string]struct{}
+	cleareddeployments      bool
+	config_snapshots        map[string]struct{}
+	removedconfig_snapshots map[string]struct{}
+	clearedconfig_snapshots bool
+	done                    bool
+	oldValue                func(context.Context) (*Service, error)
+	predicates              []predicate.Service
 }
 
 var _ ent.Mutation = (*ServiceMutation)(nil)
@@ -7400,6 +8538,60 @@ func (m *ServiceMutation) ResetDeployments() {
 	m.removeddeployments = nil
 }
 
+// AddConfigSnapshotIDs adds the "config_snapshots" edge to the ConfigSnapshot entity by ids.
+func (m *ServiceMutation) AddConfigSnapshotIDs(ids ...string) {
+	if m.config_snapshots == nil {
+		m.config_snapshots = make(map[string]struct{})
+	}
+	for i := range ids {
+		m.config_snapshots[ids[i]] = struct{}{}
+	}
+}
+
+// ClearConfigSnapshots clears the "config_snapshots" edge to the ConfigSnapshot entity.
+func (m *ServiceMutation) ClearConfigSnapshots() {
+	m.clearedconfig_snapshots = true
+}
+
+// ConfigSnapshotsCleared reports if the "config_snapshots" edge to the ConfigSnapshot entity was cleared.
+func (m *ServiceMutation) ConfigSnapshotsCleared() bool {
+	return m.clearedconfig_snapshots
+}
+
+// RemoveConfigSnapshotIDs removes the "config_snapshots" edge to the ConfigSnapshot entity by IDs.
+func (m *ServiceMutation) RemoveConfigSnapshotIDs(ids ...string) {
+	if m.removedconfig_snapshots == nil {
+		m.removedconfig_snapshots = make(map[string]struct{})
+	}
+	for i := range ids {
+		delete(m.config_snapshots, ids[i])
+		m.removedconfig_snapshots[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedConfigSnapshots returns the removed IDs of the "config_snapshots" edge to the ConfigSnapshot entity.
+func (m *ServiceMutation) RemovedConfigSnapshotsIDs() (ids []string) {
+	for id := range m.removedconfig_snapshots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ConfigSnapshotsIDs returns the "config_snapshots" edge IDs in the mutation.
+func (m *ServiceMutation) ConfigSnapshotsIDs() (ids []string) {
+	for id := range m.config_snapshots {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetConfigSnapshots resets all changes to the "config_snapshots" edge.
+func (m *ServiceMutation) ResetConfigSnapshots() {
+	m.config_snapshots = nil
+	m.clearedconfig_snapshots = false
+	m.removedconfig_snapshots = nil
+}
+
 // Where appends a list predicates to the ServiceMutation builder.
 func (m *ServiceMutation) Where(ps ...predicate.Service) {
 	m.predicates = append(m.predicates, ps...)
@@ -7725,12 +8917,15 @@ func (m *ServiceMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ServiceMutation) AddedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.organization != nil {
 		edges = append(edges, service.EdgeOrganization)
 	}
 	if m.deployments != nil {
 		edges = append(edges, service.EdgeDeployments)
+	}
+	if m.config_snapshots != nil {
+		edges = append(edges, service.EdgeConfigSnapshots)
 	}
 	return edges
 }
@@ -7749,15 +8944,24 @@ func (m *ServiceMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case service.EdgeConfigSnapshots:
+		ids := make([]ent.Value, 0, len(m.config_snapshots))
+		for id := range m.config_snapshots {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ServiceMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.removeddeployments != nil {
 		edges = append(edges, service.EdgeDeployments)
+	}
+	if m.removedconfig_snapshots != nil {
+		edges = append(edges, service.EdgeConfigSnapshots)
 	}
 	return edges
 }
@@ -7772,18 +8976,27 @@ func (m *ServiceMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case service.EdgeConfigSnapshots:
+		ids := make([]ent.Value, 0, len(m.removedconfig_snapshots))
+		for id := range m.removedconfig_snapshots {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ServiceMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.clearedorganization {
 		edges = append(edges, service.EdgeOrganization)
 	}
 	if m.cleareddeployments {
 		edges = append(edges, service.EdgeDeployments)
+	}
+	if m.clearedconfig_snapshots {
+		edges = append(edges, service.EdgeConfigSnapshots)
 	}
 	return edges
 }
@@ -7796,6 +9009,8 @@ func (m *ServiceMutation) EdgeCleared(name string) bool {
 		return m.clearedorganization
 	case service.EdgeDeployments:
 		return m.cleareddeployments
+	case service.EdgeConfigSnapshots:
+		return m.clearedconfig_snapshots
 	}
 	return false
 }
@@ -7820,6 +9035,9 @@ func (m *ServiceMutation) ResetEdge(name string) error {
 		return nil
 	case service.EdgeDeployments:
 		m.ResetDeployments()
+		return nil
+	case service.EdgeConfigSnapshots:
+		m.ResetConfigSnapshots()
 		return nil
 	}
 	return fmt.Errorf("unknown Service edge %s", name)

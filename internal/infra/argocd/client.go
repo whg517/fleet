@@ -249,6 +249,60 @@ func (c *Client) DeleteApplication(ctx context.Context, name string) error {
 	return nil
 }
 
+// UpdateApplication updates an Argo CD Application's Helm values via the REST API.
+// It sends a PUT request to update the application spec with new Helm values.
+func (c *Client) UpdateApplication(ctx context.Context, name string, values map[string]any) error {
+	type appSpec struct {
+		APIVersion string `json:"apiVersion"`
+		Kind       string `json:"kind"`
+		Metadata   struct {
+			Name      string `json:"name"`
+			Namespace string `json:"namespace"`
+		} `json:"metadata"`
+		Spec struct {
+			Source struct {
+				Helm *helmConfig `json:"helm,omitempty"`
+			} `json:"source"`
+		} `json:"spec"`
+	}
+
+	spec := appSpec{}
+	spec.APIVersion = "argoproj.io/v1alpha1"
+	spec.Kind = "Application"
+	spec.Metadata.Name = name
+	spec.Metadata.Namespace = "argocd"
+	if values != nil {
+		spec.Spec.Source.Helm = &helmConfig{Values: values}
+	}
+
+	body, err := json.Marshal(struct {
+		Application appSpec `json:"application"`
+	}{Application: spec})
+	if err != nil {
+		return fmt.Errorf("marshal application update spec: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.baseURL+"/api/v1/applications/"+url.PathEscape(name), bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	c.setHeaders(req)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("send request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("argocd update application failed: status=%d body=%s", resp.StatusCode, string(respBody))
+	}
+
+	c.logger.Info("argocd application updated", zap.String("name", name))
+	return nil
+}
+
 func (c *Client) setHeaders(req *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")

@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
+	"github.com/whg517/fleet/internal/store/ent/configsnapshot"
 	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/environment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
@@ -176,6 +177,21 @@ func (_c *EnvironmentCreate) AddDeployments(v ...*Deployment) *EnvironmentCreate
 		ids[i] = v[i].ID
 	}
 	return _c.AddDeploymentIDs(ids...)
+}
+
+// AddConfigSnapshotIDs adds the "config_snapshots" edge to the ConfigSnapshot entity by IDs.
+func (_c *EnvironmentCreate) AddConfigSnapshotIDs(ids ...string) *EnvironmentCreate {
+	_c.mutation.AddConfigSnapshotIDs(ids...)
+	return _c
+}
+
+// AddConfigSnapshots adds the "config_snapshots" edges to the ConfigSnapshot entity.
+func (_c *EnvironmentCreate) AddConfigSnapshots(v ...*ConfigSnapshot) *EnvironmentCreate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddConfigSnapshotIDs(ids...)
 }
 
 // Mutation returns the EnvironmentMutation object of the builder.
@@ -352,6 +368,22 @@ func (_c *EnvironmentCreate) createSpec() (*Environment, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(deployment.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ConfigSnapshotsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   environment.ConfigSnapshotsTable,
+			Columns: []string{environment.ConfigSnapshotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(configsnapshot.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

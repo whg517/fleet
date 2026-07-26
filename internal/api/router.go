@@ -15,6 +15,7 @@ import (
 	"github.com/whg517/fleet/internal/domain/audit"
 	"github.com/whg517/fleet/internal/domain/auth"
 	"github.com/whg517/fleet/internal/domain/cluster"
+	configdomain "github.com/whg517/fleet/internal/domain/config"
 	"github.com/whg517/fleet/internal/domain/deployment"
 	"github.com/whg517/fleet/internal/domain/rbac"
 	"github.com/whg517/fleet/internal/domain/service"
@@ -184,6 +185,28 @@ func registerRoutes(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Cl
 		deployments.GET("/:id/status", deployH.GetStatus)
 		deployments.POST("/:id/rollback", deployH.Rollback)
 
+		// Config management (Helm values environment-level configuration)
+		configStore := configdomain.NewEntStore(entClient)
+		configLookup := configdomain.NewLookupEntStore(entClient)
+		// Reuse the same ArgoCD adapter for config updates
+		var configArgoClient configdomain.ArgoCDClient
+		if deployArgoClient != nil {
+			// The deployment adapter already implements UpdateApplication
+			configArgoClient = deployArgoClient.(configdomain.ArgoCDClient)
+		}
+		if configArgoClient == nil {
+			configArgoClient = &noopArgoCDClient{}
+		}
+		configSvc := configdomain.NewService(configStore, configLookup, configArgoClient, logger)
+		configH := handler.NewConfigHandler(configSvc)
+
+		// Config routes under services group
+		configGroup := v1.Group("/services", svcMW...)
+		configGroup.PUT("/:sid/environments/:eid/values", configH.UpdateValues)
+		configGroup.GET("/:sid/environments/:eid/values", configH.GetValues)
+		configGroup.GET("/:sid/environments/:eid/config-history", configH.ListHistory)
+		configGroup.GET("/:sid/environments/:eid/config-history/:snapshotId/diff", configH.Diff)
+
 		// System settings management
 		sysStore := sysdomain.NewEntStore(entClient)
 		healthChecker := &infraHealthChecker{dbDriver: dbDriver, redisClient: redisClient}
@@ -308,5 +331,8 @@ func (n *noopArgoCDClient) RollbackApplication(ctx context.Context, name, revisi
 	return fmt.Errorf("argocd is not configured")
 }
 func (n *noopArgoCDClient) DeleteApplication(ctx context.Context, name string) error {
+	return fmt.Errorf("argocd is not configured")
+}
+func (n *noopArgoCDClient) UpdateApplication(ctx context.Context, name string, values map[string]any) error {
 	return fmt.Errorf("argocd is not configured")
 }

@@ -30,6 +30,7 @@ type ArgoCDClient interface {
 	SyncApplication(ctx context.Context, name string) error
 	RollbackApplication(ctx context.Context, name string, revision string) error
 	DeleteApplication(ctx context.Context, name string) error
+	UpdateApplication(ctx context.Context, name string, values map[string]any) error
 }
 
 // DeploymentStore abstracts the Ent client operations the service needs.

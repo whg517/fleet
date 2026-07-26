@@ -37,6 +37,7 @@ func (Service) Edges() []ent.Edge {
 			Field("org_id").
 			Unique(),
 		edge.To("deployments", Deployment.Type),
+		edge.To("config_snapshots", ConfigSnapshot.Type),
 	}
 }
 

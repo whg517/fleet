@@ -91,6 +91,66 @@ var (
 			},
 		},
 	}
+	// ConfigSnapshotsColumns holds the columns for the "config_snapshots" table.
+	ConfigSnapshotsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "values", Type: field.TypeJSON, Nullable: true},
+		{Name: "previous_values", Type: field.TypeJSON, Nullable: true},
+		{Name: "changed_by", Type: field.TypeString, Nullable: true},
+		{Name: "change_reason", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "environment_id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "service_id", Type: field.TypeString},
+	}
+	// ConfigSnapshotsTable holds the schema information for the "config_snapshots" table.
+	ConfigSnapshotsTable = &schema.Table{
+		Name:       "config_snapshots",
+		Columns:    ConfigSnapshotsColumns,
+		PrimaryKey: []*schema.Column{ConfigSnapshotsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "config_snapshots_environments_config_snapshots",
+				Columns:    []*schema.Column{ConfigSnapshotsColumns[6]},
+				RefColumns: []*schema.Column{EnvironmentsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "config_snapshots_organizations_config_snapshots",
+				Columns:    []*schema.Column{ConfigSnapshotsColumns[7]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "config_snapshots_services_config_snapshots",
+				Columns:    []*schema.Column{ConfigSnapshotsColumns[8]},
+				RefColumns: []*schema.Column{ServicesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "configsnapshot_org_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConfigSnapshotsColumns[7]},
+			},
+			{
+				Name:    "configsnapshot_service_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConfigSnapshotsColumns[8]},
+			},
+			{
+				Name:    "configsnapshot_environment_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConfigSnapshotsColumns[6]},
+			},
+			{
+				Name:    "configsnapshot_service_id_environment_id",
+				Unique:  false,
+				Columns: []*schema.Column{ConfigSnapshotsColumns[8], ConfigSnapshotsColumns[6]},
+			},
+		},
+	}
 	// DeploymentsColumns holds the columns for the "deployments" table.
 	DeploymentsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -534,6 +594,7 @@ var (
 	Tables = []*schema.Table{
 		AuditLogsTable,
 		ClustersTable,
+		ConfigSnapshotsTable,
 		DeploymentsTable,
 		EnvironmentsTable,
 		OrganizationsTable,
@@ -549,6 +610,9 @@ var (
 
 func init() {
 	ClustersTable.ForeignKeys[0].RefTable = OrganizationsTable
+	ConfigSnapshotsTable.ForeignKeys[0].RefTable = EnvironmentsTable
+	ConfigSnapshotsTable.ForeignKeys[1].RefTable = OrganizationsTable
+	ConfigSnapshotsTable.ForeignKeys[2].RefTable = ServicesTable
 	DeploymentsTable.ForeignKeys[0].RefTable = ClustersTable
 	DeploymentsTable.ForeignKeys[1].RefTable = EnvironmentsTable
 	DeploymentsTable.ForeignKeys[2].RefTable = OrganizationsTable

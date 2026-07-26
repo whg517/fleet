@@ -17,6 +17,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/whg517/fleet/internal/store/ent/auditlog"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
+	"github.com/whg517/fleet/internal/store/ent/configsnapshot"
 	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/environment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
@@ -38,6 +39,8 @@ type Client struct {
 	AuditLog *AuditLogClient
 	// Cluster is the client for interacting with the Cluster builders.
 	Cluster *ClusterClient
+	// ConfigSnapshot is the client for interacting with the ConfigSnapshot builders.
+	ConfigSnapshot *ConfigSnapshotClient
 	// Deployment is the client for interacting with the Deployment builders.
 	Deployment *DeploymentClient
 	// Environment is the client for interacting with the Environment builders.
@@ -71,6 +74,7 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.AuditLog = NewAuditLogClient(c.config)
 	c.Cluster = NewClusterClient(c.config)
+	c.ConfigSnapshot = NewConfigSnapshotClient(c.config)
 	c.Deployment = NewDeploymentClient(c.config)
 	c.Environment = NewEnvironmentClient(c.config)
 	c.Organization = NewOrganizationClient(c.config)
@@ -175,6 +179,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		config:          cfg,
 		AuditLog:        NewAuditLogClient(cfg),
 		Cluster:         NewClusterClient(cfg),
+		ConfigSnapshot:  NewConfigSnapshotClient(cfg),
 		Deployment:      NewDeploymentClient(cfg),
 		Environment:     NewEnvironmentClient(cfg),
 		Organization:    NewOrganizationClient(cfg),
@@ -206,6 +211,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		config:          cfg,
 		AuditLog:        NewAuditLogClient(cfg),
 		Cluster:         NewClusterClient(cfg),
+		ConfigSnapshot:  NewConfigSnapshotClient(cfg),
 		Deployment:      NewDeploymentClient(cfg),
 		Environment:     NewEnvironmentClient(cfg),
 		Organization:    NewOrganizationClient(cfg),
@@ -245,8 +251,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AuditLog, c.Cluster, c.Deployment, c.Environment, c.Organization, c.Registry,
-		c.Role, c.Service, c.SystemSetting, c.Template, c.TemplateVersion, c.User,
+		c.AuditLog, c.Cluster, c.ConfigSnapshot, c.Deployment, c.Environment,
+		c.Organization, c.Registry, c.Role, c.Service, c.SystemSetting, c.Template,
+		c.TemplateVersion, c.User,
 	} {
 		n.Use(hooks...)
 	}
@@ -256,8 +263,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AuditLog, c.Cluster, c.Deployment, c.Environment, c.Organization, c.Registry,
-		c.Role, c.Service, c.SystemSetting, c.Template, c.TemplateVersion, c.User,
+		c.AuditLog, c.Cluster, c.ConfigSnapshot, c.Deployment, c.Environment,
+		c.Organization, c.Registry, c.Role, c.Service, c.SystemSetting, c.Template,
+		c.TemplateVersion, c.User,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -270,6 +278,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AuditLog.mutate(ctx, m)
 	case *ClusterMutation:
 		return c.Cluster.mutate(ctx, m)
+	case *ConfigSnapshotMutation:
+		return c.ConfigSnapshot.mutate(ctx, m)
 	case *DeploymentMutation:
 		return c.Deployment.mutate(ctx, m)
 	case *EnvironmentMutation:
@@ -606,6 +616,187 @@ func (c *ClusterClient) mutate(ctx context.Context, m *ClusterMutation) (Value, 
 		return (&ClusterDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Cluster mutation op: %q", m.Op())
+	}
+}
+
+// ConfigSnapshotClient is a client for the ConfigSnapshot schema.
+type ConfigSnapshotClient struct {
+	config
+}
+
+// NewConfigSnapshotClient returns a client for the ConfigSnapshot from the given config.
+func NewConfigSnapshotClient(c config) *ConfigSnapshotClient {
+	return &ConfigSnapshotClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `configsnapshot.Hooks(f(g(h())))`.
+func (c *ConfigSnapshotClient) Use(hooks ...Hook) {
+	c.hooks.ConfigSnapshot = append(c.hooks.ConfigSnapshot, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `configsnapshot.Intercept(f(g(h())))`.
+func (c *ConfigSnapshotClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ConfigSnapshot = append(c.inters.ConfigSnapshot, interceptors...)
+}
+
+// Create returns a builder for creating a ConfigSnapshot entity.
+func (c *ConfigSnapshotClient) Create() *ConfigSnapshotCreate {
+	mutation := newConfigSnapshotMutation(c.config, OpCreate)
+	return &ConfigSnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ConfigSnapshot entities.
+func (c *ConfigSnapshotClient) CreateBulk(builders ...*ConfigSnapshotCreate) *ConfigSnapshotCreateBulk {
+	return &ConfigSnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ConfigSnapshotClient) MapCreateBulk(slice any, setFunc func(*ConfigSnapshotCreate, int)) *ConfigSnapshotCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ConfigSnapshotCreateBulk{err: fmt.Errorf("calling to ConfigSnapshotClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ConfigSnapshotCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ConfigSnapshotCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ConfigSnapshot.
+func (c *ConfigSnapshotClient) Update() *ConfigSnapshotUpdate {
+	mutation := newConfigSnapshotMutation(c.config, OpUpdate)
+	return &ConfigSnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ConfigSnapshotClient) UpdateOne(_m *ConfigSnapshot) *ConfigSnapshotUpdateOne {
+	mutation := newConfigSnapshotMutation(c.config, OpUpdateOne, withConfigSnapshot(_m))
+	return &ConfigSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ConfigSnapshotClient) UpdateOneID(id string) *ConfigSnapshotUpdateOne {
+	mutation := newConfigSnapshotMutation(c.config, OpUpdateOne, withConfigSnapshotID(id))
+	return &ConfigSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ConfigSnapshot.
+func (c *ConfigSnapshotClient) Delete() *ConfigSnapshotDelete {
+	mutation := newConfigSnapshotMutation(c.config, OpDelete)
+	return &ConfigSnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ConfigSnapshotClient) DeleteOne(_m *ConfigSnapshot) *ConfigSnapshotDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ConfigSnapshotClient) DeleteOneID(id string) *ConfigSnapshotDeleteOne {
+	builder := c.Delete().Where(configsnapshot.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ConfigSnapshotDeleteOne{builder}
+}
+
+// Query returns a query builder for ConfigSnapshot.
+func (c *ConfigSnapshotClient) Query() *ConfigSnapshotQuery {
+	return &ConfigSnapshotQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeConfigSnapshot},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ConfigSnapshot entity by its id.
+func (c *ConfigSnapshotClient) Get(ctx context.Context, id string) (*ConfigSnapshot, error) {
+	return c.Query().Where(configsnapshot.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ConfigSnapshotClient) GetX(ctx context.Context, id string) *ConfigSnapshot {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryService queries the service edge of a ConfigSnapshot.
+func (c *ConfigSnapshotClient) QueryService(_m *ConfigSnapshot) *ServiceQuery {
+	query := (&ServiceClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(configsnapshot.Table, configsnapshot.FieldID, id),
+			sqlgraph.To(service.Table, service.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, configsnapshot.ServiceTable, configsnapshot.ServiceColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryEnvironment queries the environment edge of a ConfigSnapshot.
+func (c *ConfigSnapshotClient) QueryEnvironment(_m *ConfigSnapshot) *EnvironmentQuery {
+	query := (&EnvironmentClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(configsnapshot.Table, configsnapshot.FieldID, id),
+			sqlgraph.To(environment.Table, environment.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, configsnapshot.EnvironmentTable, configsnapshot.EnvironmentColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryOrganization queries the organization edge of a ConfigSnapshot.
+func (c *ConfigSnapshotClient) QueryOrganization(_m *ConfigSnapshot) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(configsnapshot.Table, configsnapshot.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, configsnapshot.OrganizationTable, configsnapshot.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ConfigSnapshotClient) Hooks() []Hook {
+	return c.hooks.ConfigSnapshot
+}
+
+// Interceptors returns the client interceptors.
+func (c *ConfigSnapshotClient) Interceptors() []Interceptor {
+	return c.inters.ConfigSnapshot
+}
+
+func (c *ConfigSnapshotClient) mutate(ctx context.Context, m *ConfigSnapshotMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ConfigSnapshotCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ConfigSnapshotUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ConfigSnapshotUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ConfigSnapshotDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ConfigSnapshot mutation op: %q", m.Op())
 	}
 }
 
@@ -962,6 +1153,22 @@ func (c *EnvironmentClient) QueryDeployments(_m *Environment) *DeploymentQuery {
 	return query
 }
 
+// QueryConfigSnapshots queries the config_snapshots edge of a Environment.
+func (c *EnvironmentClient) QueryConfigSnapshots(_m *Environment) *ConfigSnapshotQuery {
+	query := (&ConfigSnapshotClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(environment.Table, environment.FieldID, id),
+			sqlgraph.To(configsnapshot.Table, configsnapshot.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, environment.ConfigSnapshotsTable, environment.ConfigSnapshotsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *EnvironmentClient) Hooks() []Hook {
 	return c.hooks.Environment
@@ -1200,6 +1407,22 @@ func (c *OrganizationClient) QueryDeployments(_m *Organization) *DeploymentQuery
 			sqlgraph.From(organization.Table, organization.FieldID, id),
 			sqlgraph.To(deployment.Table, deployment.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, organization.DeploymentsTable, organization.DeploymentsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryConfigSnapshots queries the config_snapshots edge of a Organization.
+func (c *OrganizationClient) QueryConfigSnapshots(_m *Organization) *ConfigSnapshotQuery {
+	query := (&ConfigSnapshotClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(organization.Table, organization.FieldID, id),
+			sqlgraph.To(configsnapshot.Table, configsnapshot.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, organization.ConfigSnapshotsTable, organization.ConfigSnapshotsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -1647,6 +1870,22 @@ func (c *ServiceClient) QueryDeployments(_m *Service) *DeploymentQuery {
 			sqlgraph.From(service.Table, service.FieldID, id),
 			sqlgraph.To(deployment.Table, deployment.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, service.DeploymentsTable, service.DeploymentsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryConfigSnapshots queries the config_snapshots edge of a Service.
+func (c *ServiceClient) QueryConfigSnapshots(_m *Service) *ConfigSnapshotQuery {
+	query := (&ConfigSnapshotClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(service.Table, service.FieldID, id),
+			sqlgraph.To(configsnapshot.Table, configsnapshot.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, service.ConfigSnapshotsTable, service.ConfigSnapshotsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -2278,11 +2517,13 @@ func (c *UserClient) mutate(ctx context.Context, m *UserMutation) (Value, error)
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AuditLog, Cluster, Deployment, Environment, Organization, Registry, Role,
-		Service, SystemSetting, Template, TemplateVersion, User []ent.Hook
+		AuditLog, Cluster, ConfigSnapshot, Deployment, Environment, Organization,
+		Registry, Role, Service, SystemSetting, Template, TemplateVersion,
+		User []ent.Hook
 	}
 	inters struct {
-		AuditLog, Cluster, Deployment, Environment, Organization, Registry, Role,
-		Service, SystemSetting, Template, TemplateVersion, User []ent.Interceptor
+		AuditLog, Cluster, ConfigSnapshot, Deployment, Environment, Organization,
+		Registry, Role, Service, SystemSetting, Template, TemplateVersion,
+		User []ent.Interceptor
 	}
 )

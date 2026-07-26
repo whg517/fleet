@@ -16,6 +16,8 @@ type Tx struct {
 	AuditLog *AuditLogClient
 	// Cluster is the client for interacting with the Cluster builders.
 	Cluster *ClusterClient
+	// ConfigSnapshot is the client for interacting with the ConfigSnapshot builders.
+	ConfigSnapshot *ConfigSnapshotClient
 	// Deployment is the client for interacting with the Deployment builders.
 	Deployment *DeploymentClient
 	// Environment is the client for interacting with the Environment builders.
@@ -169,6 +171,7 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.AuditLog = NewAuditLogClient(tx.config)
 	tx.Cluster = NewClusterClient(tx.config)
+	tx.ConfigSnapshot = NewConfigSnapshotClient(tx.config)
 	tx.Deployment = NewDeploymentClient(tx.config)
 	tx.Environment = NewEnvironmentClient(tx.config)
 	tx.Organization = NewOrganizationClient(tx.config)

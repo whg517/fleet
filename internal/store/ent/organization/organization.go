@@ -41,6 +41,8 @@ const (
 	EdgeTemplates = "templates"
 	// EdgeDeployments holds the string denoting the deployments edge name in mutations.
 	EdgeDeployments = "deployments"
+	// EdgeConfigSnapshots holds the string denoting the config_snapshots edge name in mutations.
+	EdgeConfigSnapshots = "config_snapshots"
 	// Table holds the table name of the organization in the database.
 	Table = "organizations"
 	// UsersTable is the table that holds the users relation/edge.
@@ -92,6 +94,13 @@ const (
 	DeploymentsInverseTable = "deployments"
 	// DeploymentsColumn is the table column denoting the deployments relation/edge.
 	DeploymentsColumn = "org_id"
+	// ConfigSnapshotsTable is the table that holds the config_snapshots relation/edge.
+	ConfigSnapshotsTable = "config_snapshots"
+	// ConfigSnapshotsInverseTable is the table name for the ConfigSnapshot entity.
+	// It exists in this package in order to avoid circular dependency with the "configsnapshot" package.
+	ConfigSnapshotsInverseTable = "config_snapshots"
+	// ConfigSnapshotsColumn is the table column denoting the config_snapshots relation/edge.
+	ConfigSnapshotsColumn = "org_id"
 )
 
 // Columns holds all SQL columns for organization fields.
@@ -287,6 +296,20 @@ func ByDeployments(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newDeploymentsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByConfigSnapshotsCount orders the results by config_snapshots count.
+func ByConfigSnapshotsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newConfigSnapshotsStep(), opts...)
+	}
+}
+
+// ByConfigSnapshots orders the results by config_snapshots terms.
+func ByConfigSnapshots(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newConfigSnapshotsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newUsersStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -334,5 +357,12 @@ func newDeploymentsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(DeploymentsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, DeploymentsTable, DeploymentsColumn),
+	)
+}
+func newConfigSnapshotsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ConfigSnapshotsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ConfigSnapshotsTable, ConfigSnapshotsColumn),
 	)
 }
