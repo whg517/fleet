@@ -106,6 +106,16 @@ func seedPrerequisites(t *testing.T, client *ent.Client) (svcID, envID, deployme
 	t.Helper()
 	ctx := context.Background()
 
+	org, err := client.Organization.Create().
+		SetID("org-1").
+		SetName("test-org").
+		SetSlug("test-org").
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("seed organization: %v", err)
+	}
+	_ = org
+
 	cl, err := client.Cluster.Create().
 		SetID("cluster-1").
 		SetName("test-cluster").
@@ -187,6 +197,7 @@ func TestUpdateValues_Success(t *testing.T) {
 	}
 
 	snap, err := svc.UpdateValues(ctx, svcID, envID, UpdateValuesReq{
+		OrgID:        "org-1",
 		Values:       newValues,
 		ChangedBy:    "user-1",
 		ChangeReason: "scale up replicas",
@@ -200,6 +211,9 @@ func TestUpdateValues_Success(t *testing.T) {
 	}
 	if snap.ServiceID != svcID {
 		t.Errorf("ServiceID: got %q, want %q", snap.ServiceID, svcID)
+	}
+	if snap.OrgID != "org-1" {
+		t.Errorf("OrgID: got %q, want %q", snap.OrgID, "org-1")
 	}
 	if !valuesEqual(snap.Values["replicas"], 3) {
 		t.Errorf("Values replicas: got %v (%T), want 3", snap.Values["replicas"], snap.Values["replicas"])
@@ -317,15 +331,14 @@ func TestUpdateValues_NoActiveDeployment(t *testing.T) {
 		SetName("svc-2").
 		SaveX(ctx)
 
-	e := client.Environment.Create().
+	_ = s
+
+	client.Environment.Create().
 		SetID("env-2").
 		SetName("test").
 		SetClusterID(cl.ID).
 		SetNamespacePattern("default").
 		SaveX(ctx)
-
-	_ = s
-	_ = e
 
 	_, err = svc.UpdateValues(ctx, "svc-2", "env-2", UpdateValuesReq{
 		Values: map[string]any{"key": "val"},
@@ -428,6 +441,9 @@ func TestDiff_Success(t *testing.T) {
 			"replicas": 1,
 			"image":    "nginx:1.20",
 			"removed":  "old-value",
+			"config": map[string]any{
+				"timeout": "30s",
+			},
 		},
 	})
 	if err != nil {
@@ -440,6 +456,9 @@ func TestDiff_Success(t *testing.T) {
 			"replicas": 3,
 			"image":    "nginx:1.20",
 			"added":    "new-value",
+			"config": map[string]any{
+				"timeout": "60s",
+			},
 		},
 	})
 	if err != nil {
@@ -479,6 +498,19 @@ func TestDiff_Success(t *testing.T) {
 	// "image" should not be in the diff since it didn't change
 	if _, ok := entryMap["image"]; ok {
 		t.Error("unexpected diff entry for 'image' which didn't change")
+	}
+
+	// Nested map diff: config.timeout should be detected as a nested change
+	if entry, ok := entryMap["config.timeout"]; !ok || entry.Type != "changed" {
+		t.Errorf("expected 'config.timeout' changed, got %v", entry)
+	}
+	if entry, ok := entryMap["config.timeout"]; ok {
+		if entry.OldValue != "30s" {
+			t.Errorf("config.timeout OldValue: got %v, want 30s", entry.OldValue)
+		}
+		if entry.NewValue != "60s" {
+			t.Errorf("config.timeout NewValue: got %v, want 60s", entry.NewValue)
+		}
 	}
 }
 
@@ -531,5 +563,149 @@ func TestNormalizePage(t *testing.T) {
 			t.Errorf("normalizePage(%d, %d): got (%d, %d), want (%d, %d)",
 				tt.page, tt.pageSize, page, pageSize, tt.wantPage, tt.wantPageSize)
 		}
+	}
+}
+
+// --- Code review additional tests ---
+
+func TestUpdateValues_Validation(t *testing.T) {
+	svc, client, _ := newTestService(t)
+	ctx := context.Background()
+
+	svcID, envID, _ := seedPrerequisites(t, client)
+
+	tooManyKeys := make(map[string]any)
+	for i := 0; i < 101; i++ {
+		tooManyKeys[fmt.Sprintf("key%d", i)] = i
+	}
+
+	tests := []struct {
+		name  string
+		svcID string
+		envID string
+		req   UpdateValuesReq
+	}{
+		{"empty serviceID", "", envID, UpdateValuesReq{Values: map[string]any{"k": "v"}}},
+		{"empty environmentID", svcID, "", UpdateValuesReq{Values: map[string]any{"k": "v"}}},
+		{"nil values", svcID, envID, UpdateValuesReq{Values: nil}},
+		{"too many keys", svcID, envID, UpdateValuesReq{Values: tooManyKeys}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := svc.UpdateValues(ctx, tt.svcID, tt.envID, tt.req)
+			if !errors.Is(err, ErrInvalidInput) {
+				t.Errorf("expected ErrInvalidInput, got %v", err)
+			}
+		})
+	}
+}
+
+func TestUpdateValues_EnvironmentNotFound(t *testing.T) {
+	svc, client, _ := newTestService(t)
+	ctx := context.Background()
+
+	svcID, _, _ := seedPrerequisites(t, client)
+
+	_, err := svc.UpdateValues(ctx, svcID, "nonexistent-env", UpdateValuesReq{
+		Values: map[string]any{"key": "val"},
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+func TestUpdateValues_EmptyArgocdAppName(t *testing.T) {
+	svc, client, _ := newTestService(t)
+	ctx := context.Background()
+
+	svcID, envID, _ := seedPrerequisites(t, client)
+
+	// Set argocd_app_name to empty on the existing deployment
+	_, err := client.Deployment.UpdateOneID("dep-1").SetArgocdAppName("").Save(ctx)
+	if err != nil {
+		t.Fatalf("clear argocd app name: %v", err)
+	}
+
+	_, err = svc.UpdateValues(ctx, svcID, envID, UpdateValuesReq{
+		Values: map[string]any{"key": "val"},
+	})
+	if !errors.Is(err, ErrNoActiveDeployment) {
+		t.Errorf("expected ErrNoActiveDeployment, got %v", err)
+	}
+}
+
+func TestDiff_FromNotFound(t *testing.T) {
+	svc, client, _ := newTestService(t)
+	ctx := context.Background()
+
+	svcID, envID, _ := seedPrerequisites(t, client)
+
+	_, err := svc.Diff(ctx, svcID, envID, "nonexistent-snapshot", "")
+	if !errors.Is(err, ErrConfigNotFound) {
+		t.Errorf("expected ErrConfigNotFound, got %v", err)
+	}
+}
+
+func TestDiff_ToNotFound(t *testing.T) {
+	svc, client, _ := newTestService(t)
+	ctx := context.Background()
+
+	svcID, envID, _ := seedPrerequisites(t, client)
+
+	// Create a snapshot so we have a valid fromVer
+	snap1, err := svc.UpdateValues(ctx, svcID, envID, UpdateValuesReq{
+		Values: map[string]any{"key": "val"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateValues: %v", err)
+	}
+
+	_, err = svc.Diff(ctx, svcID, envID, snap1.ID, "nonexistent-snapshot")
+	if !errors.Is(err, ErrConfigNotFound) {
+		t.Errorf("expected ErrConfigNotFound, got %v", err)
+	}
+}
+
+func TestDiff_SnapshotBelongsToDifferentService(t *testing.T) {
+	svc, client, _ := newTestService(t)
+	ctx := context.Background()
+
+	svcID, envID, _ := seedPrerequisites(t, client)
+
+	// Create a snapshot for svc-1/env-1
+	snap1, err := svc.UpdateValues(ctx, svcID, envID, UpdateValuesReq{
+		Values: map[string]any{"key": "val"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateValues: %v", err)
+	}
+
+	// Create a different service+environment
+	cl, err := client.Cluster.Create().
+		SetID("cluster-3").
+		SetName("cluster-3").
+		SetAPIServer("https://10.0.0.3:6443").
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("seed cluster: %v", err)
+	}
+
+	client.Service.Create().
+		SetID("svc-3").
+		SetName("svc-3").
+		SaveX(ctx)
+
+	client.Environment.Create().
+		SetID("env-3").
+		SetName("prod").
+		SetClusterID(cl.ID).
+		SetNamespacePattern("default").
+		SaveX(ctx)
+
+	// Try to diff using svc-1's snapshot but with svc-3/env-3 path params
+	_, err = svc.Diff(ctx, "svc-3", "env-3", snap1.ID, "")
+	if !errors.Is(err, ErrConfigNotFound) {
+		t.Errorf("expected ErrConfigNotFound for snapshot belonging to different service, got %v", err)
 	}
 }

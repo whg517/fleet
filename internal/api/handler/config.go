@@ -28,7 +28,7 @@ func (h *ConfigHandler) UpdateValues(c echo.Context) error {
 
 	var req config.UpdateValuesReq
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(400, map[string]APIError{
+		return c.JSON(http.StatusBadRequest, map[string]APIError{
 			"error": {Code: "INVALID_INPUT", Message: "invalid request body"},
 		})
 	}
@@ -38,6 +38,9 @@ func (h *ConfigHandler) UpdateValues(c echo.Context) error {
 	req.EnvironmentID = eid
 	if uid, ok := c.Get("user_id").(string); ok {
 		req.ChangedBy = uid
+	}
+	if oid, ok := c.Get("org_id").(string); ok {
+		req.OrgID = oid
 	}
 
 	snap, err := h.svc.UpdateValues(c.Request().Context(), sid, eid, req)
@@ -118,7 +121,7 @@ func configErrorResponse(c echo.Context, err error) error {
 		})
 	case errors.Is(err, config.ErrInvalidInput):
 		return c.JSON(http.StatusBadRequest, map[string]APIError{
-			"error": {Code: "INVALID_INPUT", Message: err.Error()},
+			"error": {Code: "INVALID_INPUT", Message: "invalid request parameters"},
 		})
 	default:
 		return c.JSON(http.StatusInternalServerError, map[string]APIError{

@@ -190,9 +190,8 @@ func registerRoutes(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Cl
 		configLookup := configdomain.NewLookupEntStore(entClient)
 		// Reuse the same ArgoCD adapter for config updates
 		var configArgoClient configdomain.ArgoCDClient
-		if deployArgoClient != nil {
-			// The deployment adapter already implements UpdateApplication
-			configArgoClient = deployArgoClient.(configdomain.ArgoCDClient)
+		if adapter, ok := deployArgoClient.(configdomain.ArgoCDClient); ok && adapter != nil {
+			configArgoClient = adapter
 		}
 		if configArgoClient == nil {
 			configArgoClient = &noopArgoCDClient{}
@@ -200,12 +199,11 @@ func registerRoutes(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Cl
 		configSvc := configdomain.NewService(configStore, configLookup, configArgoClient, logger)
 		configH := handler.NewConfigHandler(configSvc)
 
-		// Config routes under services group
-		configGroup := v1.Group("/services", svcMW...)
-		configGroup.PUT("/:sid/environments/:eid/values", configH.UpdateValues)
-		configGroup.GET("/:sid/environments/:eid/values", configH.GetValues)
-		configGroup.GET("/:sid/environments/:eid/config-history", configH.ListHistory)
-		configGroup.GET("/:sid/environments/:eid/config-history/:snapshotId/diff", configH.Diff)
+		// Config routes registered on the existing services group
+		services.PUT("/:sid/environments/:eid/values", configH.UpdateValues)
+		services.GET("/:sid/environments/:eid/values", configH.GetValues)
+		services.GET("/:sid/environments/:eid/config-history", configH.ListHistory)
+		services.GET("/:sid/environments/:eid/config-history/:snapshotId/diff", configH.Diff)
 
 		// System settings management
 		sysStore := sysdomain.NewEntStore(entClient)

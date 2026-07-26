@@ -250,53 +250,66 @@ func (c *Client) DeleteApplication(ctx context.Context, name string) error {
 }
 
 // UpdateApplication updates an Argo CD Application's Helm values via the REST API.
-// It sends a PUT request to update the application spec with new Helm values.
+// It first GETs the existing application spec to avoid overwriting other fields,
+// then modifies only source.helm.values and PUTs the full spec back.
 func (c *Client) UpdateApplication(ctx context.Context, name string, values map[string]any) error {
-	type appSpec struct {
-		APIVersion string `json:"apiVersion"`
-		Kind       string `json:"kind"`
-		Metadata   struct {
-			Name      string `json:"name"`
-			Namespace string `json:"namespace"`
-		} `json:"metadata"`
-		Spec struct {
-			Source struct {
-				Helm *helmConfig `json:"helm,omitempty"`
-			} `json:"source"`
-		} `json:"spec"`
+	// 1. GET existing application to preserve the full spec
+	getReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/applications/"+url.PathEscape(name), nil)
+	if err != nil {
+		return fmt.Errorf("create get request: %w", err)
+	}
+	c.setHeaders(getReq)
+
+	getResp, err := c.http.Do(getReq)
+	if err != nil {
+		return fmt.Errorf("send get request: %w", err)
 	}
 
-	spec := appSpec{}
-	spec.APIVersion = "argoproj.io/v1alpha1"
-	spec.Kind = "Application"
-	spec.Metadata.Name = name
-	spec.Metadata.Namespace = "argocd"
+	if getResp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(getResp.Body)
+		_ = getResp.Body.Close()
+		return fmt.Errorf("argocd get application for update failed: status=%d body=%s", getResp.StatusCode, string(respBody))
+	}
+
+	var existing struct {
+		Application argocdAppSpec `json:"application"`
+	}
+	if err := json.NewDecoder(getResp.Body).Decode(&existing); err != nil {
+		_ = getResp.Body.Close()
+		return fmt.Errorf("decode existing application: %w", err)
+	}
+	_ = getResp.Body.Close()
+
+	// 2. Modify only the helm values in the existing spec
 	if values != nil {
-		spec.Spec.Source.Helm = &helmConfig{Values: values}
+		existing.Application.Spec.Source.Helm = &helmConfig{Values: values}
+	} else {
+		existing.Application.Spec.Source.Helm = nil
 	}
 
+	// 3. PUT the full spec back
 	body, err := json.Marshal(struct {
-		Application appSpec `json:"application"`
-	}{Application: spec})
+		Application argocdAppSpec `json:"application"`
+	}{Application: existing.Application})
 	if err != nil {
 		return fmt.Errorf("marshal application update spec: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.baseURL+"/api/v1/applications/"+url.PathEscape(name), bytes.NewReader(body))
+	putReq, err := http.NewRequestWithContext(ctx, http.MethodPut, c.baseURL+"/api/v1/applications/"+url.PathEscape(name), bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return fmt.Errorf("create put request: %w", err)
 	}
-	c.setHeaders(req)
+	c.setHeaders(putReq)
 
-	resp, err := c.http.Do(req)
+	putResp, err := c.http.Do(putReq)
 	if err != nil {
-		return fmt.Errorf("send request: %w", err)
+		return fmt.Errorf("send put request: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = putResp.Body.Close() }()
 
-	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("argocd update application failed: status=%d body=%s", resp.StatusCode, string(respBody))
+	if putResp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(putResp.Body)
+		return fmt.Errorf("argocd update application failed: status=%d body=%s", putResp.StatusCode, string(respBody))
 	}
 
 	c.logger.Info("argocd application updated", zap.String("name", name))

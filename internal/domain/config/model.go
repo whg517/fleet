@@ -34,7 +34,7 @@ type ConfigSnapshot struct {
 type UpdateValuesReq struct {
 	ServiceID     string         `json:"-"`
 	EnvironmentID string         `json:"-"`
-	OrgID         string         `json:"org_id,omitempty"`
+	OrgID         string         `json:"-"`
 	Values        map[string]any `json:"values"`
 	ChangedBy     string         `json:"-"`
 	ChangeReason  string         `json:"change_reason,omitempty"`

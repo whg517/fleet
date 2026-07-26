@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -11,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/whg517/fleet/internal/store/ent"
 	"github.com/whg517/fleet/internal/store/ent/configsnapshot"
+	entdeployment "github.com/whg517/fleet/internal/store/ent/deployment"
 	entservice "github.com/whg517/fleet/internal/store/ent/service"
 )
 
@@ -86,16 +88,10 @@ func (s *LookupEntStore) GetEnvironmentByID(ctx context.Context, id string) (*en
 func (s *LookupEntStore) GetLatestDeployment(ctx context.Context, serviceID, environmentID string) (*ent.Deployment, error) {
 	deps, err := s.client.Deployment.Query().
 		Where(
-			func(sel *sql.Selector) {
-				sel.Where(sql.And(
-					sql.EQ(sel.C("service_id"), serviceID),
-					sql.EQ(sel.C("environment_id"), environmentID),
-				))
-			},
+			entdeployment.ServiceIDEQ(serviceID),
+			entdeployment.EnvironmentIDEQ(environmentID),
 		).
-		Order(func(sel *sql.Selector) {
-			sel.OrderBy(sql.Desc(sel.C("created_at")))
-		}).
+		Order(entdeployment.ByCreatedAt(sql.OrderDesc())).
 		Limit(1).
 		All(ctx)
 	if err != nil {
@@ -144,20 +140,27 @@ func normalizePage(page, pageSize int) (int, int) {
 	return page, pageSize
 }
 
-// UpdateValues modifies Helm values for a service+environment.
-func (s *ServiceImpl) UpdateValues(ctx context.Context, serviceID, environmentID string, req UpdateValuesReq) (*ConfigSnapshot, error) {
-	// Validate inputs
+// validateUpdateReq validates the input parameters for UpdateValues.
+func validateUpdateReq(serviceID, environmentID string, req UpdateValuesReq) error {
 	if strings.TrimSpace(serviceID) == "" {
-		return nil, fmt.Errorf("%w: service_id is required", ErrInvalidInput)
+		return fmt.Errorf("%w: service_id is required", ErrInvalidInput)
 	}
 	if strings.TrimSpace(environmentID) == "" {
-		return nil, fmt.Errorf("%w: environment_id is required", ErrInvalidInput)
+		return fmt.Errorf("%w: environment_id is required", ErrInvalidInput)
 	}
 	if req.Values == nil {
-		return nil, fmt.Errorf("%w: values is required", ErrInvalidInput)
+		return fmt.Errorf("%w: values is required", ErrInvalidInput)
 	}
 	if len(req.Values) > maxValuesKeys {
-		return nil, fmt.Errorf("%w: values must have at most %d keys", ErrInvalidInput, maxValuesKeys)
+		return fmt.Errorf("%w: values must have at most %d keys", ErrInvalidInput, maxValuesKeys)
+	}
+	return nil
+}
+
+// UpdateValues modifies Helm values for a service+environment.
+func (s *ServiceImpl) UpdateValues(ctx context.Context, serviceID, environmentID string, req UpdateValuesReq) (*ConfigSnapshot, error) {
+	if err := validateUpdateReq(serviceID, environmentID, req); err != nil {
+		return nil, err
 	}
 
 	// Validate service exists and is active
@@ -197,7 +200,7 @@ func (s *ServiceImpl) UpdateValues(ctx context.Context, serviceID, environmentID
 	var previousValues map[string]any
 	existing, _, err := s.store.ListSnapshots(ctx, 1, 0, req.OrgID, serviceID, environmentID)
 	if err != nil {
-		s.logger.Warn("failed to get previous config snapshot", zap.Error(err))
+		return nil, fmt.Errorf("query previous config snapshot: %w", err)
 	}
 	if len(existing) > 0 {
 		previousValues = existing[0].Values
@@ -236,6 +239,13 @@ func (s *ServiceImpl) UpdateValues(ctx context.Context, serviceID, environmentID
 
 	saved, err := s.store.SaveSnapshot(ctx, builder)
 	if err != nil {
+		s.logger.Error("critical: argocd updated but snapshot save failed",
+			zap.String("service_id", serviceID),
+			zap.String("environment_id", environmentID),
+			zap.String("argocd_app", dep.ArgocdAppName),
+			zap.String("changed_by", req.ChangedBy),
+			zap.Error(err),
+		)
 		return nil, fmt.Errorf("save config snapshot: %w", err)
 	}
 
@@ -318,6 +328,10 @@ func (s *ServiceImpl) Diff(ctx context.Context, serviceID, environmentID string,
 		}
 		return nil, fmt.Errorf("get from snapshot: %w", err)
 	}
+	// Validate fromSnap ownership
+	if fromSnap.ServiceID != serviceID || fromSnap.EnvironmentID != environmentID {
+		return nil, fmt.Errorf("%w: snapshot does not belong to the specified service and environment", ErrConfigNotFound)
+	}
 
 	// Determine "to" snapshot: if toVer is empty, use the latest
 	var toSnap *ent.ConfigSnapshot
@@ -337,6 +351,10 @@ func (s *ServiceImpl) Diff(ctx context.Context, serviceID, environmentID string,
 				return nil, fmt.Errorf("%w: to snapshot not found", ErrConfigNotFound)
 			}
 			return nil, fmt.Errorf("get to snapshot: %w", err)
+		}
+		// Validate toSnap ownership
+		if toSnap.ServiceID != serviceID || toSnap.EnvironmentID != environmentID {
+			return nil, fmt.Errorf("%w: snapshot does not belong to the specified service and environment", ErrConfigNotFound)
 		}
 	}
 
@@ -378,7 +396,14 @@ func diffMaps(oldVal, newVal map[string]any, prefix string) []ConfigDiffEntry {
 		keys[k] = struct{}{}
 	}
 
+	// Sort keys for deterministic output
+	sortedKeys := make([]string, 0, len(keys))
 	for k := range keys {
+		sortedKeys = append(sortedKeys, k)
+	}
+	sort.Strings(sortedKeys)
+
+	for _, k := range sortedKeys {
 		path := k
 		if prefix != "" {
 			path = prefix + "." + k
