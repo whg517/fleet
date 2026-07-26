@@ -390,12 +390,12 @@ func TestPublishVersion_InvalidSemver(t *testing.T) {
 	tmpl, _ := svc.Create(ctx, CreateTemplateReq{Name: "test", Type: TypeDeployK8s, Source: SourcePlatform})
 
 	tests := []string{
-		"1.0",       // missing patch
-		"1.0.0.0",   // too many segments
-		"v1.0.0",    // leading v
-		"latest",    // not semver
-		"1.0.0-",    // incomplete pre-release
-		"",          // empty
+		"1.0",     // missing patch
+		"1.0.0.0", // too many segments
+		"v1.0.0",  // leading v
+		"latest",  // not semver
+		"1.0.0-",  // incomplete pre-release
+		"",        // empty
 	}
 
 	for _, v := range tests {

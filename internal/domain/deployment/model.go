@@ -33,22 +33,22 @@ const (
 
 // Deployment represents a deploy action in the system.
 type Deployment struct {
-	ID                string         `json:"id"`
-	OrgID             string         `json:"org_id,omitempty"`
-	ServiceID         string         `json:"service_id"`
-	EnvironmentID     string         `json:"environment_id"`
-	ClusterID         string         `json:"cluster_id"`
-	TemplateVersionID string         `json:"template_version_id"`
-	Version           string         `json:"version"`
-	ValuesOverride    map[string]any `json:"values_override,omitempty"`
+	ID                string           `json:"id"`
+	OrgID             string           `json:"org_id,omitempty"`
+	ServiceID         string           `json:"service_id"`
+	EnvironmentID     string           `json:"environment_id"`
+	ClusterID         string           `json:"cluster_id"`
+	TemplateVersionID string           `json:"template_version_id"`
+	Version           string           `json:"version"`
+	ValuesOverride    map[string]any   `json:"values_override,omitempty"`
 	Status            DeploymentStatus `json:"status"`
-	ArgocdAppName     string         `json:"argocd_app_name,omitempty"`
-	SyncStatus        string         `json:"sync_status,omitempty"`
-	HealthStatus      string         `json:"health_status,omitempty"`
-	CreatedBy         string         `json:"created_by,omitempty"`
-	CreatedAt         time.Time      `json:"created_at"`
-	UpdatedAt         time.Time      `json:"updated_at"`
-	CompletedAt       *time.Time     `json:"completed_at,omitempty"`
+	ArgoCDAppName     string           `json:"argocd_app_name,omitempty"`
+	SyncStatus        string           `json:"sync_status,omitempty"`
+	HealthStatus      string           `json:"health_status,omitempty"`
+	CreatedBy         string           `json:"created_by,omitempty"`
+	CreatedAt         time.Time        `json:"created_at"`
+	UpdatedAt         time.Time        `json:"updated_at"`
+	CompletedAt       *time.Time       `json:"completed_at,omitempty"`
 }
 
 // CreateDeploymentReq is the request payload for creating a new deployment.
@@ -59,7 +59,7 @@ type CreateDeploymentReq struct {
 	TemplateVersionID string         `json:"template_version_id"`
 	Version           string         `json:"version"`
 	ValuesOverride    map[string]any `json:"values_override,omitempty"`
-	CreatedBy         string         `json:"created_by,omitempty"`
+	CreatedBy         string         `json:"-"`
 }
 
 // DeploymentFilter is used for filtering and paginating deployments.

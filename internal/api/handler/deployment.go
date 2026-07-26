@@ -30,6 +30,11 @@ func (h *DeploymentHandler) Create(c echo.Context) error {
 		})
 	}
 
+	// Set CreatedBy from authenticated user context (not from request body)
+	if uid, ok := c.Get("user_id").(string); ok {
+		req.CreatedBy = uid
+	}
+
 	d, err := h.svc.Create(c.Request().Context(), req)
 	if err != nil {
 		return deploymentErrorResponse(c, err)
@@ -109,7 +114,7 @@ func deploymentErrorResponse(c echo.Context, err error) error {
 		})
 	case errors.Is(err, deployment.ErrArgoCDUnavailable):
 		return c.JSON(http.StatusServiceUnavailable, map[string]APIError{
-			"error": {Code: "ARGOCD_UNAVAILABLE", Message: err.Error()},
+			"error": {Code: "ARGOCD_UNAVAILABLE", Message: "argo cd is temporarily unavailable"},
 		})
 	case errors.Is(err, deployment.ErrNoHealthyVersion):
 		return c.JSON(http.StatusConflict, map[string]APIError{
@@ -117,7 +122,7 @@ func deploymentErrorResponse(c echo.Context, err error) error {
 		})
 	case errors.Is(err, deployment.ErrInvalidInput):
 		return c.JSON(http.StatusBadRequest, map[string]APIError{
-			"error": {Code: "INVALID_INPUT", Message: err.Error()},
+			"error": {Code: "INVALID_INPUT", Message: "invalid input"},
 		})
 	default:
 		return c.JSON(http.StatusInternalServerError, map[string]APIError{

@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"entgo.io/ent/dialect/sql"
 	"github.com/whg517/fleet/internal/store/ent"
 	entdeployment "github.com/whg517/fleet/internal/store/ent/deployment"
 	entservice "github.com/whg517/fleet/internal/store/ent/service"
@@ -70,7 +71,7 @@ func (s *EntStore) ListDeployments(ctx context.Context, limit, offset int, orgID
 	if limit > 0 {
 		q = q.Limit(limit)
 	}
-	deployments, err := q.Order(entdeployment.ByCreatedAt()).All(ctx)
+	deployments, err := q.Order(entdeployment.ByCreatedAt(sql.OrderDesc())).All(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -101,14 +102,24 @@ func (s *LookupEntStore) GetTemplateVersionByID(ctx context.Context, id string) 
 	return s.client.TemplateVersion.Get(ctx, id)
 }
 
+func (s *LookupEntStore) GetTemplateByID(ctx context.Context, id string) (*ent.Template, error) {
+	return s.client.Template.Get(ctx, id)
+}
+
 // --- Service Implementation ---
+
+const (
+	maxVersionLength      = 256
+	rollbackLookupLimit   = 50
+	maxValuesOverrideKeys = 50
+)
 
 // ServiceImpl implements the Service interface.
 type ServiceImpl struct {
-	store      DeploymentStore
-	lookup     LookupStore
-	argocd     ArgoCDClient
-	logger     *zap.Logger
+	store  DeploymentStore
+	lookup LookupStore
+	argocd ArgoCDClient
+	logger *zap.Logger
 }
 
 // NewService creates a new deployment service.
@@ -147,25 +158,20 @@ func validateCreateReq(req CreateDeploymentReq) error {
 	if strings.TrimSpace(req.Version) == "" {
 		return fmt.Errorf("%w: version (image tag) is required", ErrInvalidInput)
 	}
-	if len(req.Version) > 256 {
-		return fmt.Errorf("%w: version must be at most 256 characters", ErrInvalidInput)
+	if len(req.Version) > maxVersionLength {
+		return fmt.Errorf("%w: version must be at most %d characters", ErrInvalidInput, maxVersionLength)
+	}
+	if len(req.ValuesOverride) > maxValuesOverrideKeys {
+		return fmt.Errorf("%w: values_override must have at most %d keys", ErrInvalidInput, maxValuesOverrideKeys)
 	}
 	return nil
 }
 
 // generateArgocdAppName generates a deterministic Argo CD Application name.
-// Format: fleet-{service_id_short}-{env_id_short}
+// Format: fleet-{service_id}-{environment_id}
+// Argo CD names allow up to 253 characters; UUIDs are 36 chars, so this is safe.
 func generateArgocdAppName(serviceID, environmentID string) string {
-	// Use first 8 chars of each ID for a concise but unique name
-	svcShort := serviceID
-	if len(svcShort) > 8 {
-		svcShort = svcShort[:8]
-	}
-	envShort := environmentID
-	if len(envShort) > 8 {
-		envShort = envShort[:8]
-	}
-	return fmt.Sprintf("fleet-%s-%s", svcShort, envShort)
+	return fmt.Sprintf("fleet-%s-%s", serviceID, environmentID)
 }
 
 // Create creates a new deployment.
@@ -207,18 +213,27 @@ func (s *ServiceImpl) Create(ctx context.Context, req CreateDeploymentReq) (*Dep
 		return nil, fmt.Errorf("%w: template version is archived", ErrInvalidInput)
 	}
 
+	// Resolve Helm chart repo URL and chart name from the Template
+	tmpl, err := s.lookup.GetTemplateByID(ctx, tv.TemplateID)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, fmt.Errorf("%w: template not found", ErrInvalidInput)
+		}
+		return nil, fmt.Errorf("lookup template: %w", err)
+	}
+	if tmpl.Repo == "" {
+		return nil, fmt.Errorf("%w: template has no repo URL configured", ErrInvalidInput)
+	}
+
 	// Generate Argo CD Application name
 	argocdAppName := generateArgocdAppName(req.ServiceID, req.EnvironmentID)
 
 	// Create Argo CD Application
-	// In MVP, we use the template version's repo/chart info.
-	// The actual repo URL would come from the Template/Registry, but for now
-	// we use a simplified approach.
 	err = s.argocd.CreateApplication(ctx, ArgoCDAppReq{
 		Name:      argocdAppName,
 		Namespace: env.NamespacePattern,
-		RepoURL:   "", // Would be resolved from Template/Registry in full impl
-		Chart:     "", // Would be resolved from Template
+		RepoURL:   tmpl.Repo,
+		Chart:     tmpl.Name,
 		TargetRev: tv.Version,
 		Values:    req.ValuesOverride,
 	})
@@ -376,7 +391,7 @@ func (s *ServiceImpl) Rollback(ctx context.Context, id string) (*Deployment, err
 	}
 
 	// Find the previous healthy deployment for the same service+environment
-	deployments, _, err := s.store.ListDeployments(ctx, 50, 0, "", current.ServiceID, current.EnvironmentID, "")
+	deployments, _, err := s.store.ListDeployments(ctx, rollbackLookupLimit, 0, "", current.ServiceID, current.EnvironmentID, "")
 	if err != nil {
 		return nil, fmt.Errorf("list deployments for rollback: %w", err)
 	}
@@ -412,7 +427,7 @@ func (s *ServiceImpl) Rollback(ctx context.Context, id string) (*Deployment, err
 	// Update current deployment status to deploying
 	upd := s.store.UpdateDeploymentOne(id).
 		SetStatus(entdeployment.StatusDeploying).
-		SetSyncStatus("").
+		SetSyncStatus("RollingBack").
 		SetHealthStatus("")
 
 	updated, err := s.store.SaveDeploymentUpdate(ctx, upd)
@@ -437,6 +452,9 @@ func (s *ServiceImpl) Rollback(ctx context.Context, id string) (*Deployment, err
 func mapArgocdStatus(syncStatus, healthStatus string) string {
 	switch {
 	case syncStatus == "Failed" || syncStatus == "Error":
+		if healthStatus == "Healthy" {
+			return string(StatusDegraded)
+		}
 		return string(StatusFailed)
 	case healthStatus == "Healthy" && syncStatus == "Synced":
 		return string(StatusHealthy)
@@ -472,7 +490,7 @@ func toDomainDeployment(d *ent.Deployment) *Deployment {
 		Version:           d.Version,
 		ValuesOverride:    d.ValuesOverride,
 		Status:            DeploymentStatus(string(d.Status)),
-		ArgocdAppName:     d.ArgocdAppName,
+		ArgoCDAppName:     d.ArgocdAppName,
 		SyncStatus:        d.SyncStatus,
 		HealthStatus:      d.HealthStatus,
 		CreatedBy:         d.CreatedBy,

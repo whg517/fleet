@@ -51,6 +51,8 @@ type LookupStore interface {
 	GetEnvironmentByID(ctx context.Context, id string) (*ent.Environment, error)
 	// GetTemplateVersionByID returns the template version entity if it exists.
 	GetTemplateVersionByID(ctx context.Context, id string) (*ent.TemplateVersion, error)
+	// GetTemplateByID returns the template entity if it exists.
+	GetTemplateByID(ctx context.Context, id string) (*ent.Template, error)
 }
 
 // Service defines the deployment management operations.

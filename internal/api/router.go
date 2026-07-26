@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
@@ -157,7 +158,18 @@ func registerRoutes(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Cl
 		// Deployment management
 		deployStore := deployment.NewEntStore(entClient)
 		deployLookup := deployment.NewLookupEntStore(entClient)
-		deployArgoClient := argocd.NewDeploymentArgoCDAdapter("", "", logger) // placeholder — real config comes from SystemSetting at runtime
+		// TODO: Read ArgoCD URL/token from SystemSetting once dynamic config is implemented.
+		// For now, read from environment variables as fallback.
+		argocdURL := os.Getenv("FLEET_ARGOCD_URL")
+		argocdToken := os.Getenv("FLEET_ARGOCD_TOKEN")
+		var deployArgoClient deployment.ArgoCDClient
+		adapter, err := argocd.NewDeploymentArgoCDAdapter(argocdURL, argocdToken, logger)
+		if err != nil {
+			logger.Warn("argocd adapter not configured, deployment features will be limited", zap.Error(err))
+			deployArgoClient = &noopArgoCDClient{}
+		} else {
+			deployArgoClient = adapter
+		}
 		deploySvc := deployment.NewService(deployStore, deployLookup, deployArgoClient, logger)
 		deployH := handler.NewDeploymentHandler(deploySvc)
 
@@ -277,4 +289,24 @@ func (h *infraHealthChecker) PingRedis(ctx context.Context) error {
 		return fmt.Errorf("redis client not configured")
 	}
 	return h.redisClient.Ping(ctx).Err()
+}
+
+// noopArgoCDClient is a no-op implementation of deployment.ArgoCDClient
+// used when ArgoCD is not configured. All operations return an error.
+type noopArgoCDClient struct{}
+
+func (n *noopArgoCDClient) CreateApplication(ctx context.Context, req deployment.ArgoCDAppReq) error {
+	return fmt.Errorf("argocd is not configured")
+}
+func (n *noopArgoCDClient) GetApplication(ctx context.Context, name string) (*deployment.ArgoCDAppStatus, error) {
+	return nil, fmt.Errorf("argocd is not configured")
+}
+func (n *noopArgoCDClient) SyncApplication(ctx context.Context, name string) error {
+	return fmt.Errorf("argocd is not configured")
+}
+func (n *noopArgoCDClient) RollbackApplication(ctx context.Context, name, revision string) error {
+	return fmt.Errorf("argocd is not configured")
+}
+func (n *noopArgoCDClient) DeleteApplication(ctx context.Context, name string) error {
+	return fmt.Errorf("argocd is not configured")
 }

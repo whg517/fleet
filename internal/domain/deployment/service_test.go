@@ -40,17 +40,17 @@ func (d *sqliteFKDriver) Open(name string) (driver.Conn, error) {
 
 // mockArgoCD is a mock implementation of the ArgoCDClient interface for testing.
 type mockArgoCD struct {
-	createErr  error
-	getStatus  *ArgoCDAppStatus
-	getErr     error
-	syncErr    error
+	createErr   error
+	getStatus   *ArgoCDAppStatus
+	getErr      error
+	syncErr     error
 	rollbackErr error
-	deleteErr  error
+	deleteErr   error
 
-	createCalls  []ArgoCDAppReq
-	syncCalls    []string
+	createCalls   []ArgoCDAppReq
+	syncCalls     []string
 	rollbackCalls []rollbackCall
-	deleteCalls  []string
+	deleteCalls   []string
 }
 
 type rollbackCall struct {
@@ -141,6 +141,7 @@ func seedPrerequisites(t *testing.T, client *ent.Client) (svcID, envID, tvID str
 		SetName("deploy-template").
 		SetType("deploy_k8s").
 		SetSource("platform").
+		SetRepo("https://charts.example.com").
 		Save(ctx)
 	if err != nil {
 		t.Fatalf("seed template: %v", err)
@@ -189,8 +190,8 @@ func TestCreateDeployment_Success(t *testing.T) {
 	if d.Status != StatusDeploying {
 		t.Errorf("Status: got %q, want %q", d.Status, StatusDeploying)
 	}
-	if d.ArgocdAppName == "" {
-		t.Error("expected non-empty ArgocdAppName")
+	if d.ArgoCDAppName == "" {
+		t.Error("expected non-empty ArgoCDAppName")
 	}
 	if len(argocd.createCalls) != 1 {
 		t.Errorf("expected 1 CreateApplication call, got %d", len(argocd.createCalls))
@@ -483,6 +484,8 @@ func TestMapArgocdStatus(t *testing.T) {
 		{"OutOfSync", "Healthy", string(StatusHealthy)},
 		{"Synced", "Degraded", string(StatusDegraded)},
 		{"Failed", "Degraded", string(StatusFailed)},
+		{"Failed", "Healthy", string(StatusDegraded)},
+		{"Error", "Healthy", string(StatusDegraded)},
 		{"OutOfSync", "Progressing", string(StatusDeploying)},
 		{"Pending", "", string(StatusDeploying)},
 	}
@@ -492,5 +495,198 @@ func TestMapArgocdStatus(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("mapArgocdStatus(%q, %q): got %q, want %q", tt.sync, tt.health, got, tt.want)
 		}
+	}
+}
+
+// --- GetStatus tests (#16) ---
+
+func TestGetStatus_Success(t *testing.T) {
+	svc, client, argocd := newTestService(t)
+	ctx := context.Background()
+
+	svcID, envID, tvID := seedPrerequisites(t, client)
+
+	created, err := svc.Create(ctx, CreateDeploymentReq{
+		ServiceID:         svcID,
+		EnvironmentID:     envID,
+		TemplateVersionID: tvID,
+		Version:           "v1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	argocd.getStatus = &ArgoCDAppStatus{SyncStatus: "Synced", HealthStatus: "Healthy"}
+
+	updated, err := svc.GetStatus(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetStatus: %v", err)
+	}
+	if updated.Status != StatusHealthy {
+		t.Errorf("Status: got %q, want %q", updated.Status, StatusHealthy)
+	}
+	if updated.SyncStatus != "Synced" {
+		t.Errorf("SyncStatus: got %q, want %q", updated.SyncStatus, "Synced")
+	}
+	if updated.HealthStatus != "Healthy" {
+		t.Errorf("HealthStatus: got %q, want %q", updated.HealthStatus, "Healthy")
+	}
+}
+
+func TestGetStatus_NotFound(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	ctx := context.Background()
+
+	_, err := svc.GetStatus(ctx, "nonexistent")
+	if err != ErrDeploymentNotFound {
+		t.Errorf("GetStatus: got %v, want ErrDeploymentNotFound", err)
+	}
+}
+
+func TestGetStatus_ArgoCDClientError(t *testing.T) {
+	svc, client, argocd := newTestService(t)
+	ctx := context.Background()
+
+	svcID, envID, tvID := seedPrerequisites(t, client)
+
+	created, err := svc.Create(ctx, CreateDeploymentReq{
+		ServiceID:         svcID,
+		EnvironmentID:     envID,
+		TemplateVersionID: tvID,
+		Version:           "v1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	argocd.getErr = fmt.Errorf("connection refused")
+
+	_, err = svc.GetStatus(ctx, created.ID)
+	if !errors.Is(err, ErrArgoCDUnavailable) {
+		t.Errorf("GetStatus: got %v, want ErrArgoCDUnavailable", err)
+	}
+}
+
+func TestGetStatus_TerminalSetsCompletedAt(t *testing.T) {
+	svc, client, argocd := newTestService(t)
+	ctx := context.Background()
+
+	svcID, envID, tvID := seedPrerequisites(t, client)
+
+	created, err := svc.Create(ctx, CreateDeploymentReq{
+		ServiceID:         svcID,
+		EnvironmentID:     envID,
+		TemplateVersionID: tvID,
+		Version:           "v1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// Simulate a failed sync → terminal status
+	argocd.getStatus = &ArgoCDAppStatus{SyncStatus: "Failed", HealthStatus: "Degraded"}
+
+	updated, err := svc.GetStatus(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetStatus: %v", err)
+	}
+	if updated.CompletedAt == nil {
+		t.Error("expected CompletedAt to be set for terminal status")
+	}
+}
+
+// --- Rollback supplementary tests (#17) ---
+
+func TestRollback_ArgoCDClientError(t *testing.T) {
+	svc, client, argocd := newTestService(t)
+	ctx := context.Background()
+
+	svcID, envID, tvID := seedPrerequisites(t, client)
+
+	// Create first deployment and set to healthy
+	d1, err := svc.Create(ctx, CreateDeploymentReq{
+		ServiceID:         svcID,
+		EnvironmentID:     envID,
+		TemplateVersionID: tvID,
+		Version:           "v2.0.0",
+	})
+	if err != nil {
+		t.Fatalf("Create d1: %v", err)
+	}
+
+	upd := svc.store.UpdateDeploymentOne(d1.ID).SetStatus("healthy")
+	_, err = svc.store.SaveDeploymentUpdate(ctx, upd)
+	if err != nil {
+		t.Fatalf("set d1 healthy: %v", err)
+	}
+
+	// Create second deployment
+	d2, err := svc.Create(ctx, CreateDeploymentReq{
+		ServiceID:         svcID,
+		EnvironmentID:     envID,
+		TemplateVersionID: tvID,
+		Version:           "v3.0.0",
+	})
+	if err != nil {
+		t.Fatalf("Create d2: %v", err)
+	}
+
+	argocd.rollbackErr = fmt.Errorf("connection refused")
+
+	_, err = svc.Rollback(ctx, d2.ID)
+	if !errors.Is(err, ErrArgoCDUnavailable) {
+		t.Errorf("Rollback: got %v, want ErrArgoCDUnavailable", err)
+	}
+}
+
+func TestRollback_DeploymentNotFound(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	ctx := context.Background()
+
+	_, err := svc.Rollback(ctx, "nonexistent")
+	if err != ErrDeploymentNotFound {
+		t.Errorf("Rollback: got %v, want ErrDeploymentNotFound", err)
+	}
+}
+
+// --- Create supplementary tests (#18) ---
+
+func TestCreateDeployment_EnvironmentNotFound(t *testing.T) {
+	svc, client, _ := newTestService(t)
+	ctx := context.Background()
+
+	svcID, _, tvID := seedPrerequisites(t, client)
+
+	_, err := svc.Create(ctx, CreateDeploymentReq{
+		ServiceID:         svcID,
+		EnvironmentID:     "nonexistent-env",
+		TemplateVersionID: tvID,
+		Version:           "v1.0.0",
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("Create with nonexistent env: got %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestCreateDeployment_ArchivedService(t *testing.T) {
+	svc, client, _ := newTestService(t)
+	ctx := context.Background()
+
+	svcID, envID, tvID := seedPrerequisites(t, client)
+
+	// Archive the service
+	_, err := client.Service.UpdateOneID(svcID).SetStatus("archived").Save(ctx)
+	if err != nil {
+		t.Fatalf("archive service: %v", err)
+	}
+
+	_, err = svc.Create(ctx, CreateDeploymentReq{
+		ServiceID:         svcID,
+		EnvironmentID:     envID,
+		TemplateVersionID: tvID,
+		Version:           "v1.0.0",
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("Create with archived service: got %v, want ErrInvalidInput", err)
 	}
 }

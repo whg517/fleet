@@ -103,11 +103,11 @@ func TestStateKey(t *testing.T) {
 
 func newTestSessionManager() *SessionManager {
 	return &SessionManager{
-		jwtSecret:   []byte("test-secret-key-at-least-32-bytes-long!!"),
-		issuer:      "fleet",
-		audience:    "fleet-api",
-		accessTTL:   30 * time.Minute,
-		refreshTTL:  8 * time.Hour,
+		jwtSecret:  []byte("test-secret-key-at-least-32-bytes-long!!"),
+		issuer:     "fleet",
+		audience:   "fleet-api",
+		accessTTL:  30 * time.Minute,
+		refreshTTL: 8 * time.Hour,
 	}
 }
 
@@ -121,11 +121,11 @@ func TestSessionManager_ValidateAccessToken(t *testing.T) {
 		Name:   "Test User",
 		Roles:  []string{"viewer"},
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:     sm.issuer,
-			Audience:   []string{sm.audience},
-			ExpiresAt:  jwt.NewNumericDate(now.Add(sm.accessTTL)),
-			IssuedAt:   jwt.NewNumericDate(now),
-			Subject:    "user-123",
+			Issuer:    sm.issuer,
+			Audience:  []string{sm.audience},
+			ExpiresAt: jwt.NewNumericDate(now.Add(sm.accessTTL)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			Subject:   "user-123",
 		},
 	}
 
@@ -169,10 +169,10 @@ func TestSessionManager_ValidateAccessToken_WrongSecret(t *testing.T) {
 		Name:   "Test User",
 		Roles:  []string{},
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:     sm.issuer,
-			Audience:   []string{sm.audience},
-			ExpiresAt:  jwt.NewNumericDate(now.Add(sm.accessTTL)),
-			IssuedAt:   jwt.NewNumericDate(now),
+			Issuer:    sm.issuer,
+			Audience:  []string{sm.audience},
+			ExpiresAt: jwt.NewNumericDate(now.Add(sm.accessTTL)),
+			IssuedAt:  jwt.NewNumericDate(now),
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -194,10 +194,10 @@ func TestSessionManager_ValidateAccessToken_Expired(t *testing.T) {
 		Name:   "Test User",
 		Roles:  []string{},
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:     sm.issuer,
-			Audience:   []string{sm.audience},
-			ExpiresAt:  jwt.NewNumericDate(now.Add(-10 * time.Minute)), // expired
-			IssuedAt:   jwt.NewNumericDate(now.Add(-40 * time.Minute)),
+			Issuer:    sm.issuer,
+			Audience:  []string{sm.audience},
+			ExpiresAt: jwt.NewNumericDate(now.Add(-10 * time.Minute)), // expired
+			IssuedAt:  jwt.NewNumericDate(now.Add(-40 * time.Minute)),
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -219,10 +219,10 @@ func TestSessionManager_ValidateAccessToken_WrongSigningMethod(t *testing.T) {
 		Name:   "Test",
 		Roles:  []string{},
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:     sm.issuer,
-			Audience:   []string{sm.audience},
-			ExpiresAt:  jwt.NewNumericDate(now.Add(30 * time.Minute)),
-			IssuedAt:   jwt.NewNumericDate(now),
+			Issuer:    sm.issuer,
+			Audience:  []string{sm.audience},
+			ExpiresAt: jwt.NewNumericDate(now.Add(30 * time.Minute)),
+			IssuedAt:  jwt.NewNumericDate(now),
 		},
 	}
 	// Use RS256 which is not HMAC — should fail validation

@@ -81,9 +81,9 @@ func GenesisHash() string {
 
 // VerificationGap represents a break in the hash chain at a specific index.
 type VerificationGap struct {
-	Index   int    `json:"index"`
-	ID      string `json:"id"`
-	Reason  string `json:"reason"`
+	Index  int    `json:"index"`
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
 }
 
 // VerifyChain verifies the integrity of a hash chain.

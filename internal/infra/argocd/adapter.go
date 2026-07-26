@@ -18,10 +18,15 @@ type DeploymentArgoCDAdapter struct {
 
 // NewDeploymentArgoCDAdapter creates an adapter that satisfies the
 // deployment.ArgoCDClient interface.
-func NewDeploymentArgoCDAdapter(baseURL, token string, logger *zap.Logger) *DeploymentArgoCDAdapter {
-	return &DeploymentArgoCDAdapter{
-		client: NewClient(baseURL, token, logger),
+// Returns an error if baseURL is empty.
+func NewDeploymentArgoCDAdapter(baseURL, token string, logger *zap.Logger) (*DeploymentArgoCDAdapter, error) {
+	client, err := NewClient(baseURL, token, logger)
+	if err != nil {
+		return nil, err
 	}
+	return &DeploymentArgoCDAdapter{
+		client: client,
+	}, nil
 }
 
 // CreateApplication implements deployment.ArgoCDClient.

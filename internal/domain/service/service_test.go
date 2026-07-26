@@ -10,8 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/whg517/fleet/internal/store/ent/enttest"
 	"github.com/whg517/fleet/internal/store/ent"
+	"github.com/whg517/fleet/internal/store/ent/enttest"
 
 	modernsqlite "modernc.org/sqlite"
 )
@@ -403,4 +403,3 @@ func TestMatchLabels(t *testing.T) {
 		})
 	}
 }
-

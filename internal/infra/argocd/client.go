@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"go.uber.org/zap"
@@ -22,7 +23,11 @@ type Client struct {
 }
 
 // NewClient creates a new Argo CD REST API client.
-func NewClient(baseURL, token string, logger *zap.Logger) *Client {
+// Returns an error if baseURL is empty.
+func NewClient(baseURL, token string, logger *zap.Logger) (*Client, error) {
+	if baseURL == "" {
+		return nil, fmt.Errorf("argocd baseURL must not be empty")
+	}
 	return &Client{
 		baseURL: baseURL,
 		token:   token,
@@ -30,7 +35,7 @@ func NewClient(baseURL, token string, logger *zap.Logger) *Client {
 			Timeout: 30 * time.Second,
 		},
 		logger: logger,
-	}
+	}, nil
 }
 
 // argocdAppSpec is the Argo CD Application spec sent via REST API.
@@ -124,7 +129,7 @@ type AppStatus struct {
 
 // GetApplication returns the sync and health status of an Argo CD Application.
 func (c *Client) GetApplication(ctx context.Context, name string) (*AppStatus, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/applications/"+name, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/applications/"+url.PathEscape(name), nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -163,10 +168,13 @@ func (c *Client) GetApplication(ctx context.Context, name string) (*AppStatus, e
 
 // SyncApplication triggers a manual sync of an Argo CD Application.
 func (c *Client) SyncApplication(ctx context.Context, name string) error {
-	body, _ := json.Marshal(map[string]any{
+	body, err := json.Marshal(map[string]any{
 		"revision": "HEAD",
 	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/applications/"+name+"/sync", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("marshal sync request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/applications/"+url.PathEscape(name)+"/sync", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -188,11 +196,16 @@ func (c *Client) SyncApplication(ctx context.Context, name string) error {
 }
 
 // RollbackApplication rolls back an Argo CD Application to a specific revision.
+// Uses the sync API with an explicit revision instead of the rollback API
+// (which expects a numeric deployment history ID, not a revision string).
 func (c *Client) RollbackApplication(ctx context.Context, name, revision string) error {
-	body, _ := json.Marshal(map[string]any{
-		"version": revision,
+	body, err := json.Marshal(map[string]any{
+		"revision": revision,
 	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/applications/"+name+"/rollback", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("marshal rollback request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/applications/"+url.PathEscape(name)+"/sync", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -215,7 +228,7 @@ func (c *Client) RollbackApplication(ctx context.Context, name, revision string)
 
 // DeleteApplication deletes an Argo CD Application.
 func (c *Client) DeleteApplication(ctx context.Context, name string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/applications/"+name, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/api/v1/applications/"+url.PathEscape(name), nil)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
