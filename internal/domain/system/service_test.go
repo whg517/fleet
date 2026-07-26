@@ -10,8 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/whg517/fleet/internal/store/ent/enttest"
 	"github.com/whg517/fleet/internal/store/ent"
+	"github.com/whg517/fleet/internal/store/ent/enttest"
 
 	modernsqlite "modernc.org/sqlite"
 )
@@ -40,7 +40,7 @@ type fakeHealthChecker struct {
 	redisErr error
 }
 
-func (f *fakeHealthChecker) PingDB(ctx context.Context) error  { return f.dbErr }
+func (f *fakeHealthChecker) PingDB(ctx context.Context) error    { return f.dbErr }
 func (f *fakeHealthChecker) PingRedis(ctx context.Context) error { return f.redisErr }
 
 func newTestService(t *testing.T) (*ServiceImpl, *ent.Client) {

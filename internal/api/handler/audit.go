@@ -89,8 +89,8 @@ func (h *AuditHandler) List(c echo.Context) error {
 
 // verifyResponse is the response for hash chain verification.
 type verifyResponse struct {
-	Valid bool                       `json:"valid"`
-	Gaps  []audit.VerificationGap   `json:"gaps"`
+	Valid bool                    `json:"valid"`
+	Gaps  []audit.VerificationGap `json:"gaps"`
 }
 
 // Verify handles GET /api/v1/audit-logs/verify.

@@ -124,7 +124,7 @@ func (h *ClusterHandler) TestConnection(c echo.Context) error {
 	}
 
 	return successResponse(c, map[string]string{
-		"status": "ok",
+		"status":  "ok",
 		"message": "cluster connection verified",
 	})
 }

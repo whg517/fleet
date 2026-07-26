@@ -10,9 +10,9 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/whg517/fleet/internal/store/ent/enttest"
 	"github.com/whg517/fleet/internal/store/ent"
 	entcluster "github.com/whg517/fleet/internal/store/ent/cluster"
+	"github.com/whg517/fleet/internal/store/ent/enttest"
 	"github.com/whg517/fleet/internal/store/ent/environment"
 
 	modernsqlite "modernc.org/sqlite"
@@ -444,10 +444,10 @@ func TestNormalizePage(t *testing.T) {
 
 func TestMatchLabels(t *testing.T) {
 	tests := []struct {
-		name         string
-		cluster      map[string]string
-		filter       map[string]string
-		wantMatch    bool
+		name      string
+		cluster   map[string]string
+		filter    map[string]string
+		wantMatch bool
 	}{
 		{"no filter", map[string]string{"a": "b"}, nil, true},
 		{"exact match", map[string]string{"a": "b"}, map[string]string{"a": "b"}, true},

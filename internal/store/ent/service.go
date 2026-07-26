@@ -49,9 +49,11 @@ type Service struct {
 type ServiceEdges struct {
 	// Organization holds the value of the organization edge.
 	Organization *Organization `json:"organization,omitempty"`
+	// Deployments holds the value of the deployments edge.
+	Deployments []*Deployment `json:"deployments,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [1]bool
+	loadedTypes [2]bool
 }
 
 // OrganizationOrErr returns the Organization value or an error if the edge
@@ -63,6 +65,15 @@ func (e ServiceEdges) OrganizationOrErr() (*Organization, error) {
 		return nil, &NotFoundError{label: organization.Label}
 	}
 	return nil, &NotLoadedError{edge: "organization"}
+}
+
+// DeploymentsOrErr returns the Deployments value or an error if the edge
+// was not loaded in eager-loading.
+func (e ServiceEdges) DeploymentsOrErr() ([]*Deployment, error) {
+	if e.loadedTypes[1] {
+		return e.Deployments, nil
+	}
+	return nil, &NotLoadedError{edge: "deployments"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -175,6 +186,11 @@ func (_m *Service) Value(name string) (ent.Value, error) {
 // QueryOrganization queries the "organization" edge of the Service entity.
 func (_m *Service) QueryOrganization() *OrganizationQuery {
 	return NewServiceClient(_m.config).QueryOrganization(_m)
+}
+
+// QueryDeployments queries the "deployments" edge of the Service entity.
+func (_m *Service) QueryDeployments() *DeploymentQuery {
+	return NewServiceClient(_m.config).QueryDeployments(_m)
 }
 
 // Update returns a builder for updating this Service.

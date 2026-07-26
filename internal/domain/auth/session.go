@@ -86,11 +86,11 @@ func (sm *SessionManager) GenerateTokens(ctx context.Context, userID, email, nam
 		Name:   name,
 		Roles:  roles,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:     sm.issuer,
-			Audience:   []string{sm.audience},
-			ExpiresAt:  jwt.NewNumericDate(now.Add(sm.accessTTL)),
-			IssuedAt:   jwt.NewNumericDate(now),
-			Subject:    userID,
+			Issuer:    sm.issuer,
+			Audience:  []string{sm.audience},
+			ExpiresAt: jwt.NewNumericDate(now.Add(sm.accessTTL)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			Subject:   userID,
 		},
 	}
 

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
@@ -14,10 +15,12 @@ import (
 	"github.com/whg517/fleet/internal/domain/audit"
 	"github.com/whg517/fleet/internal/domain/auth"
 	"github.com/whg517/fleet/internal/domain/cluster"
+	"github.com/whg517/fleet/internal/domain/deployment"
 	"github.com/whg517/fleet/internal/domain/rbac"
 	"github.com/whg517/fleet/internal/domain/service"
 	sysdomain "github.com/whg517/fleet/internal/domain/system"
 	"github.com/whg517/fleet/internal/domain/template"
+	"github.com/whg517/fleet/internal/infra/argocd"
 	"github.com/whg517/fleet/internal/infra/config"
 	"github.com/whg517/fleet/internal/infra/secrets"
 	entclient "github.com/whg517/fleet/internal/store/ent"
@@ -152,6 +155,35 @@ func registerRoutes(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Cl
 		templates.GET("/:id/versions", tmplH.ListVersions)
 		templates.POST("/:id/versions/:ver/archive", tmplH.ArchiveVersion)
 
+		// Deployment management
+		deployStore := deployment.NewEntStore(entClient)
+		deployLookup := deployment.NewLookupEntStore(entClient)
+		// TODO: Read ArgoCD URL/token from SystemSetting once dynamic config is implemented.
+		// For now, read from environment variables as fallback.
+		argocdURL := os.Getenv("FLEET_ARGOCD_URL")
+		argocdToken := os.Getenv("FLEET_ARGOCD_TOKEN")
+		var deployArgoClient deployment.ArgoCDClient
+		adapter, err := argocd.NewDeploymentArgoCDAdapter(argocdURL, argocdToken, logger)
+		if err != nil {
+			logger.Warn("argocd adapter not configured, deployment features will be limited", zap.Error(err))
+			deployArgoClient = &noopArgoCDClient{}
+		} else {
+			deployArgoClient = adapter
+		}
+		deploySvc := deployment.NewService(deployStore, deployLookup, deployArgoClient, logger)
+		deployH := handler.NewDeploymentHandler(deploySvc)
+
+		var deployMW []echo.MiddlewareFunc
+		if rbacMW != nil {
+			deployMW = append(deployMW, rbacMW)
+		}
+		deployments := v1.Group("/deployments", deployMW...)
+		deployments.POST("", deployH.Create)
+		deployments.GET("", deployH.List)
+		deployments.GET("/:id", deployH.Get)
+		deployments.GET("/:id/status", deployH.GetStatus)
+		deployments.POST("/:id/rollback", deployH.Rollback)
+
 		// System settings management
 		sysStore := sysdomain.NewEntStore(entClient)
 		healthChecker := &infraHealthChecker{dbDriver: dbDriver, redisClient: redisClient}
@@ -257,4 +289,24 @@ func (h *infraHealthChecker) PingRedis(ctx context.Context) error {
 		return fmt.Errorf("redis client not configured")
 	}
 	return h.redisClient.Ping(ctx).Err()
+}
+
+// noopArgoCDClient is a no-op implementation of deployment.ArgoCDClient
+// used when ArgoCD is not configured. All operations return an error.
+type noopArgoCDClient struct{}
+
+func (n *noopArgoCDClient) CreateApplication(ctx context.Context, req deployment.ArgoCDAppReq) error {
+	return fmt.Errorf("argocd is not configured")
+}
+func (n *noopArgoCDClient) GetApplication(ctx context.Context, name string) (*deployment.ArgoCDAppStatus, error) {
+	return nil, fmt.Errorf("argocd is not configured")
+}
+func (n *noopArgoCDClient) SyncApplication(ctx context.Context, name string) error {
+	return fmt.Errorf("argocd is not configured")
+}
+func (n *noopArgoCDClient) RollbackApplication(ctx context.Context, name, revision string) error {
+	return fmt.Errorf("argocd is not configured")
+}
+func (n *noopArgoCDClient) DeleteApplication(ctx context.Context, name string) error {
+	return fmt.Errorf("argocd is not configured")
 }

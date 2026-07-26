@@ -36,6 +36,7 @@ func (Service) Edges() []ent.Edge {
 			Ref("services").
 			Field("org_id").
 			Unique(),
+		edge.To("deployments", Deployment.Type),
 	}
 }
 

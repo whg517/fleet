@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
+	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/environment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
 	"github.com/whg517/fleet/internal/store/ent/predicate"
@@ -137,6 +138,21 @@ func (_u *ClusterUpdate) AddEnvironments(v ...*Environment) *ClusterUpdate {
 	return _u.AddEnvironmentIDs(ids...)
 }
 
+// AddDeploymentIDs adds the "deployments" edge to the Deployment entity by IDs.
+func (_u *ClusterUpdate) AddDeploymentIDs(ids ...string) *ClusterUpdate {
+	_u.mutation.AddDeploymentIDs(ids...)
+	return _u
+}
+
+// AddDeployments adds the "deployments" edges to the Deployment entity.
+func (_u *ClusterUpdate) AddDeployments(v ...*Deployment) *ClusterUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddDeploymentIDs(ids...)
+}
+
 // SetOrganizationID sets the "organization" edge to the Organization entity by ID.
 func (_u *ClusterUpdate) SetOrganizationID(id string) *ClusterUpdate {
 	_u.mutation.SetOrganizationID(id)
@@ -180,6 +196,27 @@ func (_u *ClusterUpdate) RemoveEnvironments(v ...*Environment) *ClusterUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveEnvironmentIDs(ids...)
+}
+
+// ClearDeployments clears all "deployments" edges to the Deployment entity.
+func (_u *ClusterUpdate) ClearDeployments() *ClusterUpdate {
+	_u.mutation.ClearDeployments()
+	return _u
+}
+
+// RemoveDeploymentIDs removes the "deployments" edge to Deployment entities by IDs.
+func (_u *ClusterUpdate) RemoveDeploymentIDs(ids ...string) *ClusterUpdate {
+	_u.mutation.RemoveDeploymentIDs(ids...)
+	return _u
+}
+
+// RemoveDeployments removes "deployments" edges to Deployment entities.
+func (_u *ClusterUpdate) RemoveDeployments(v ...*Deployment) *ClusterUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveDeploymentIDs(ids...)
 }
 
 // ClearOrganization clears the "organization" edge to the Organization entity.
@@ -318,6 +355,51 @@ func (_u *ClusterUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(environment.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.DeploymentsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   cluster.DeploymentsTable,
+			Columns: []string{cluster.DeploymentsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(deployment.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedDeploymentsIDs(); len(nodes) > 0 && !_u.mutation.DeploymentsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   cluster.DeploymentsTable,
+			Columns: []string{cluster.DeploymentsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(deployment.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.DeploymentsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   cluster.DeploymentsTable,
+			Columns: []string{cluster.DeploymentsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(deployment.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {
@@ -481,6 +563,21 @@ func (_u *ClusterUpdateOne) AddEnvironments(v ...*Environment) *ClusterUpdateOne
 	return _u.AddEnvironmentIDs(ids...)
 }
 
+// AddDeploymentIDs adds the "deployments" edge to the Deployment entity by IDs.
+func (_u *ClusterUpdateOne) AddDeploymentIDs(ids ...string) *ClusterUpdateOne {
+	_u.mutation.AddDeploymentIDs(ids...)
+	return _u
+}
+
+// AddDeployments adds the "deployments" edges to the Deployment entity.
+func (_u *ClusterUpdateOne) AddDeployments(v ...*Deployment) *ClusterUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddDeploymentIDs(ids...)
+}
+
 // SetOrganizationID sets the "organization" edge to the Organization entity by ID.
 func (_u *ClusterUpdateOne) SetOrganizationID(id string) *ClusterUpdateOne {
 	_u.mutation.SetOrganizationID(id)
@@ -524,6 +621,27 @@ func (_u *ClusterUpdateOne) RemoveEnvironments(v ...*Environment) *ClusterUpdate
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveEnvironmentIDs(ids...)
+}
+
+// ClearDeployments clears all "deployments" edges to the Deployment entity.
+func (_u *ClusterUpdateOne) ClearDeployments() *ClusterUpdateOne {
+	_u.mutation.ClearDeployments()
+	return _u
+}
+
+// RemoveDeploymentIDs removes the "deployments" edge to Deployment entities by IDs.
+func (_u *ClusterUpdateOne) RemoveDeploymentIDs(ids ...string) *ClusterUpdateOne {
+	_u.mutation.RemoveDeploymentIDs(ids...)
+	return _u
+}
+
+// RemoveDeployments removes "deployments" edges to Deployment entities.
+func (_u *ClusterUpdateOne) RemoveDeployments(v ...*Deployment) *ClusterUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveDeploymentIDs(ids...)
 }
 
 // ClearOrganization clears the "organization" edge to the Organization entity.
@@ -692,6 +810,51 @@ func (_u *ClusterUpdateOne) sqlSave(ctx context.Context) (_node *Cluster, err er
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(environment.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.DeploymentsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   cluster.DeploymentsTable,
+			Columns: []string{cluster.DeploymentsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(deployment.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedDeploymentsIDs(); len(nodes) > 0 && !_u.mutation.DeploymentsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   cluster.DeploymentsTable,
+			Columns: []string{cluster.DeploymentsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(deployment.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.DeploymentsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   cluster.DeploymentsTable,
+			Columns: []string{cluster.DeploymentsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(deployment.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

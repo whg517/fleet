@@ -36,16 +36,16 @@ type Cluster struct {
 
 // Environment represents a deployment environment within a cluster.
 type Environment struct {
-	ID              string         `json:"id"`
-	OrgID           string         `json:"org_id,omitempty"`
-	Name            string         `json:"name"`
-	ClusterID       string         `json:"cluster_id"`
-	NamespacePattern string        `json:"namespace_pattern,omitempty"`
-	ApprovalRequired bool          `json:"approval_required"`
-	ApproverRole    string         `json:"approver_role,omitempty"`
-	ConfigOverrides map[string]any `json:"config_overrides,omitempty"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
+	ID               string         `json:"id"`
+	OrgID            string         `json:"org_id,omitempty"`
+	Name             string         `json:"name"`
+	ClusterID        string         `json:"cluster_id"`
+	NamespacePattern string         `json:"namespace_pattern,omitempty"`
+	ApprovalRequired bool           `json:"approval_required"`
+	ApproverRole     string         `json:"approver_role,omitempty"`
+	ConfigOverrides  map[string]any `json:"config_overrides,omitempty"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
 }
 
 // CreateClusterReq is the request payload for creating a cluster.
@@ -86,10 +86,10 @@ type CreateEnvReq struct {
 
 // ClusterListResult holds a paginated list of clusters.
 type ClusterListResult struct {
-	Clusters  []*Cluster
-	Total     int
-	Page      int
-	PageSize  int
+	Clusters []*Cluster
+	Total    int
+	Page     int
+	PageSize int
 }
 
 // Pagination response helper.

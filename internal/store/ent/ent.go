@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/whg517/fleet/internal/store/ent/auditlog"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
+	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/environment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
 	"github.com/whg517/fleet/internal/store/ent/registry"
@@ -85,6 +86,7 @@ func checkColumn(t, c string) error {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			auditlog.Table:        auditlog.ValidColumn,
 			cluster.Table:         cluster.ValidColumn,
+			deployment.Table:      deployment.ValidColumn,
 			environment.Table:     environment.ValidColumn,
 			organization.Table:    organization.ValidColumn,
 			registry.Table:        registry.ValidColumn,

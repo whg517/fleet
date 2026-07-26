@@ -45,11 +45,13 @@ type Cluster struct {
 type ClusterEdges struct {
 	// Environments holds the value of the environments edge.
 	Environments []*Environment `json:"environments,omitempty"`
+	// Deployments holds the value of the deployments edge.
+	Deployments []*Deployment `json:"deployments,omitempty"`
 	// Organization holds the value of the organization edge.
 	Organization *Organization `json:"organization,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [3]bool
 }
 
 // EnvironmentsOrErr returns the Environments value or an error if the edge
@@ -61,12 +63,21 @@ func (e ClusterEdges) EnvironmentsOrErr() ([]*Environment, error) {
 	return nil, &NotLoadedError{edge: "environments"}
 }
 
+// DeploymentsOrErr returns the Deployments value or an error if the edge
+// was not loaded in eager-loading.
+func (e ClusterEdges) DeploymentsOrErr() ([]*Deployment, error) {
+	if e.loadedTypes[1] {
+		return e.Deployments, nil
+	}
+	return nil, &NotLoadedError{edge: "deployments"}
+}
+
 // OrganizationOrErr returns the Organization value or an error if the edge
 // was not loaded in eager-loading, or loaded but was not found.
 func (e ClusterEdges) OrganizationOrErr() (*Organization, error) {
 	if e.Organization != nil {
 		return e.Organization, nil
-	} else if e.loadedTypes[1] {
+	} else if e.loadedTypes[2] {
 		return nil, &NotFoundError{label: organization.Label}
 	}
 	return nil, &NotLoadedError{edge: "organization"}
@@ -170,6 +181,11 @@ func (_m *Cluster) Value(name string) (ent.Value, error) {
 // QueryEnvironments queries the "environments" edge of the Cluster entity.
 func (_m *Cluster) QueryEnvironments() *EnvironmentQuery {
 	return NewClusterClient(_m.config).QueryEnvironments(_m)
+}
+
+// QueryDeployments queries the "deployments" edge of the Cluster entity.
+func (_m *Cluster) QueryDeployments() *DeploymentQuery {
+	return NewClusterClient(_m.config).QueryDeployments(_m)
 }
 
 // QueryOrganization queries the "organization" edge of the Cluster entity.

@@ -10,14 +10,14 @@ import (
 
 // Config holds all application configuration.
 type Config struct {
-	App      AppConfig       `mapstructure:"app"`
-	Server   ServerConfig    `mapstructure:"server"`
-	Database DatabaseConfig  `mapstructure:"database"`
-	Redis    RedisConfig     `mapstructure:"redis"`
-	Log      LogConfig       `mapstructure:"log"`
-	Security SecurityConfig  `mapstructure:"security"`
-	OIDC     OIDCConfig      `mapstructure:"oidc"`
-	JWT      JWTConfig       `mapstructure:"jwt"`
+	App      AppConfig      `mapstructure:"app"`
+	Server   ServerConfig   `mapstructure:"server"`
+	Database DatabaseConfig `mapstructure:"database"`
+	Redis    RedisConfig    `mapstructure:"redis"`
+	Log      LogConfig      `mapstructure:"log"`
+	Security SecurityConfig `mapstructure:"security"`
+	OIDC     OIDCConfig     `mapstructure:"oidc"`
+	JWT      JWTConfig      `mapstructure:"jwt"`
 }
 
 // AppConfig holds application-level settings.
@@ -45,21 +45,21 @@ type OIDCConfig struct {
 
 // JWTConfig holds JWT signing settings for session tokens.
 type JWTConfig struct {
-	Secret       string        `mapstructure:"secret"`
-	AccessTTL    time.Duration `mapstructure:"access_ttl"`
-	RefreshTTL   time.Duration `mapstructure:"refresh_ttl"`
-	FrontendURL  string        `mapstructure:"frontend_url"`
-	Issuer       string        `mapstructure:"issuer"`
-	Audience     string        `mapstructure:"audience"`
+	Secret      string        `mapstructure:"secret"`
+	AccessTTL   time.Duration `mapstructure:"access_ttl"`
+	RefreshTTL  time.Duration `mapstructure:"refresh_ttl"`
+	FrontendURL string        `mapstructure:"frontend_url"`
+	Issuer      string        `mapstructure:"issuer"`
+	Audience    string        `mapstructure:"audience"`
 }
 
 // ServerConfig holds HTTP server settings.
 type ServerConfig struct {
-	Port            int           `mapstructure:"port"`
-	ReadTimeout     time.Duration `mapstructure:"read_timeout"`
-	WriteTimeout    time.Duration `mapstructure:"write_timeout"`
-	AllowedOrigins  []string      `mapstructure:"allowed_origins"`
-	Environment     string        `mapstructure:"environment"` // "development" or "production"
+	Port           int           `mapstructure:"port"`
+	ReadTimeout    time.Duration `mapstructure:"read_timeout"`
+	WriteTimeout   time.Duration `mapstructure:"write_timeout"`
+	AllowedOrigins []string      `mapstructure:"allowed_origins"`
+	Environment    string        `mapstructure:"environment"` // "development" or "production"
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.

@@ -33,6 +33,8 @@ const (
 	FieldUpdatedAt = "updated_at"
 	// EdgeEnvironments holds the string denoting the environments edge name in mutations.
 	EdgeEnvironments = "environments"
+	// EdgeDeployments holds the string denoting the deployments edge name in mutations.
+	EdgeDeployments = "deployments"
 	// EdgeOrganization holds the string denoting the organization edge name in mutations.
 	EdgeOrganization = "organization"
 	// Table holds the table name of the cluster in the database.
@@ -44,6 +46,13 @@ const (
 	EnvironmentsInverseTable = "environments"
 	// EnvironmentsColumn is the table column denoting the environments relation/edge.
 	EnvironmentsColumn = "cluster_id"
+	// DeploymentsTable is the table that holds the deployments relation/edge.
+	DeploymentsTable = "deployments"
+	// DeploymentsInverseTable is the table name for the Deployment entity.
+	// It exists in this package in order to avoid circular dependency with the "deployment" package.
+	DeploymentsInverseTable = "deployments"
+	// DeploymentsColumn is the table column denoting the deployments relation/edge.
+	DeploymentsColumn = "cluster_id"
 	// OrganizationTable is the table that holds the organization relation/edge.
 	OrganizationTable = "clusters"
 	// OrganizationInverseTable is the table name for the Organization entity.
@@ -167,6 +176,20 @@ func ByEnvironments(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByDeploymentsCount orders the results by deployments count.
+func ByDeploymentsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newDeploymentsStep(), opts...)
+	}
+}
+
+// ByDeployments orders the results by deployments terms.
+func ByDeployments(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newDeploymentsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByOrganizationField orders the results by organization field.
 func ByOrganizationField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -178,6 +201,13 @@ func newEnvironmentsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(EnvironmentsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, EnvironmentsTable, EnvironmentsColumn),
+	)
+}
+func newDeploymentsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(DeploymentsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, DeploymentsTable, DeploymentsColumn),
 	)
 }
 func newOrganizationStep() *sqlgraph.Step {

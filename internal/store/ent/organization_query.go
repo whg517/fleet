@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
+	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/environment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
 	"github.com/whg517/fleet/internal/store/ent/predicate"
@@ -35,6 +36,7 @@ type OrganizationQuery struct {
 	withRegistries   *RegistryQuery
 	withServices     *ServiceQuery
 	withTemplates    *TemplateQuery
+	withDeployments  *DeploymentQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -196,6 +198,28 @@ func (_q *OrganizationQuery) QueryTemplates() *TemplateQuery {
 			sqlgraph.From(organization.Table, organization.FieldID, selector),
 			sqlgraph.To(template.Table, template.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, organization.TemplatesTable, organization.TemplatesColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryDeployments chains the current query on the "deployments" edge.
+func (_q *OrganizationQuery) QueryDeployments() *DeploymentQuery {
+	query := (&DeploymentClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(organization.Table, organization.FieldID, selector),
+			sqlgraph.To(deployment.Table, deployment.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, organization.DeploymentsTable, organization.DeploymentsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -401,6 +425,7 @@ func (_q *OrganizationQuery) Clone() *OrganizationQuery {
 		withRegistries:   _q.withRegistries.Clone(),
 		withServices:     _q.withServices.Clone(),
 		withTemplates:    _q.withTemplates.Clone(),
+		withDeployments:  _q.withDeployments.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -470,6 +495,17 @@ func (_q *OrganizationQuery) WithTemplates(opts ...func(*TemplateQuery)) *Organi
 		opt(query)
 	}
 	_q.withTemplates = query
+	return _q
+}
+
+// WithDeployments tells the query-builder to eager-load the nodes that are connected to
+// the "deployments" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *OrganizationQuery) WithDeployments(opts ...func(*DeploymentQuery)) *OrganizationQuery {
+	query := (&DeploymentClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withDeployments = query
 	return _q
 }
 
@@ -551,13 +587,14 @@ func (_q *OrganizationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 	var (
 		nodes       = []*Organization{}
 		_spec       = _q.querySpec()
-		loadedTypes = [6]bool{
+		loadedTypes = [7]bool{
 			_q.withUsers != nil,
 			_q.withClusters != nil,
 			_q.withEnvironments != nil,
 			_q.withRegistries != nil,
 			_q.withServices != nil,
 			_q.withTemplates != nil,
+			_q.withDeployments != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -617,6 +654,13 @@ func (_q *OrganizationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 		if err := _q.loadTemplates(ctx, query, nodes,
 			func(n *Organization) { n.Edges.Templates = []*Template{} },
 			func(n *Organization, e *Template) { n.Edges.Templates = append(n.Edges.Templates, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withDeployments; query != nil {
+		if err := _q.loadDeployments(ctx, query, nodes,
+			func(n *Organization) { n.Edges.Deployments = []*Deployment{} },
+			func(n *Organization, e *Deployment) { n.Edges.Deployments = append(n.Edges.Deployments, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -788,6 +832,36 @@ func (_q *OrganizationQuery) loadTemplates(ctx context.Context, query *TemplateQ
 	}
 	query.Where(predicate.Template(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(organization.TemplatesColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.OrgID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "org_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *OrganizationQuery) loadDeployments(ctx context.Context, query *DeploymentQuery, nodes []*Organization, init func(*Organization), assign func(*Organization, *Deployment)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*Organization)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(deployment.FieldOrgID)
+	}
+	query.Where(predicate.Deployment(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(organization.DeploymentsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

@@ -68,13 +68,13 @@ type authServiceImpl struct {
 // NewService creates a new auth Service.
 func NewService(oidcCfg config.OIDCConfig, jwtCfg config.JWTConfig, entClient *ent.Client, rdb *redis.Client, logger *zap.Logger) Service {
 	return &authServiceImpl{
-		cfg:        oidcCfg,
-		jwtCfg:     jwtCfg,
-		entClient:  entClient,
+		cfg:         oidcCfg,
+		jwtCfg:      jwtCfg,
+		entClient:   entClient,
 		redisClient: rdb,
-		sessionMgr: NewSessionManager(jwtCfg, rdb),
-		httpClient: &http.Client{Timeout: 10 * time.Second},
-		logger:     logger,
+		sessionMgr:  NewSessionManager(jwtCfg, rdb),
+		httpClient:  &http.Client{Timeout: 10 * time.Second},
+		logger:      logger,
 	}
 }
 

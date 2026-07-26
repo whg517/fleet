@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
 	"github.com/whg517/fleet/internal/store/ent/service"
 )
@@ -168,6 +169,21 @@ func (_c *ServiceCreate) SetNillableOrganizationID(id *string) *ServiceCreate {
 // SetOrganization sets the "organization" edge to the Organization entity.
 func (_c *ServiceCreate) SetOrganization(v *Organization) *ServiceCreate {
 	return _c.SetOrganizationID(v.ID)
+}
+
+// AddDeploymentIDs adds the "deployments" edge to the Deployment entity by IDs.
+func (_c *ServiceCreate) AddDeploymentIDs(ids ...string) *ServiceCreate {
+	_c.mutation.AddDeploymentIDs(ids...)
+	return _c
+}
+
+// AddDeployments adds the "deployments" edges to the Deployment entity.
+func (_c *ServiceCreate) AddDeployments(v ...*Deployment) *ServiceCreate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddDeploymentIDs(ids...)
 }
 
 // Mutation returns the ServiceMutation object of the builder.
@@ -329,6 +345,22 @@ func (_c *ServiceCreate) createSpec() (*Service, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.OrgID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.DeploymentsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   service.DeploymentsTable,
+			Columns: []string{service.DeploymentsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(deployment.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

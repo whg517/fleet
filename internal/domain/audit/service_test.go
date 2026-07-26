@@ -12,8 +12,8 @@ import (
 	"entgo.io/ent/dialect"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/whg517/fleet/internal/store/ent"
-	"github.com/whg517/fleet/internal/store/ent/enttest"
 	"github.com/whg517/fleet/internal/store/ent/auditlog"
+	"github.com/whg517/fleet/internal/store/ent/enttest"
 )
 
 func newTestClient(t *testing.T) *ent.Client {
@@ -370,9 +370,9 @@ func TestService_VerifyChain_Empty(t *testing.T) {
 
 func TestExtractResourceTypeAndID(t *testing.T) {
 	tests := []struct {
-		path         string
-		wantType     string
-		wantID       string
+		path     string
+		wantType string
+		wantID   string
 	}{
 		{"/api/v1/clusters/123", "clusters", "123"},
 		{"/api/v1/clusters", "clusters", ""},

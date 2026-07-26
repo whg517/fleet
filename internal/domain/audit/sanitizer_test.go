@@ -90,8 +90,8 @@ func TestSanitize_NestedSlice(t *testing.T) {
 func TestSanitize_SliceOfScalars(t *testing.T) {
 	t.Parallel()
 	in := map[string]any{
-		"keys":  []any{"a", "b", "c"},
-		"tags":  []any{"prod", "staging"},
+		"keys": []any{"a", "b", "c"},
+		"tags": []any{"prod", "staging"},
 	}
 	got := Sanitize(in)
 	// "keys" contains "key" → sensitive, entire value masked
@@ -143,7 +143,7 @@ func TestSanitize_AllSensitiveKeywords(t *testing.T) {
 func TestSanitize_PartialMatch(t *testing.T) {
 	t.Parallel()
 	in := map[string]any{
-		"api_token":    "tok",
+		"api_token":     "tok",
 		"access_key":    "key-val",
 		"refresh_token": "rt",
 		"description":   "normal field",

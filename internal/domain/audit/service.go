@@ -38,10 +38,10 @@ type AuditFilter struct {
 
 // Result is a paginated list of audit logs.
 type Result struct {
-	Logs       []*ent.AuditLog
-	Total      int
-	Page       int
-	PageSize   int
+	Logs     []*ent.AuditLog
+	Total    int
+	Page     int
+	PageSize int
 }
 
 // Service defines the audit log business operations.

@@ -12,6 +12,9 @@ type AuditLog func(*sql.Selector)
 // Cluster is the predicate function for cluster builders.
 type Cluster func(*sql.Selector)
 
+// Deployment is the predicate function for deployment builders.
+type Deployment func(*sql.Selector)
+
 // Environment is the predicate function for environment builders.
 type Environment func(*sql.Selector)
 
