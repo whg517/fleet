@@ -588,6 +588,7 @@ func TestUpdateValues_Validation(t *testing.T) {
 		{"empty serviceID", "", envID, UpdateValuesReq{Values: map[string]any{"k": "v"}}},
 		{"empty environmentID", svcID, "", UpdateValuesReq{Values: map[string]any{"k": "v"}}},
 		{"nil values", svcID, envID, UpdateValuesReq{Values: nil}},
+		{"empty values map", svcID, envID, UpdateValuesReq{Values: map[string]any{}}},
 		{"too many keys", svcID, envID, UpdateValuesReq{Values: tooManyKeys}},
 	}
 

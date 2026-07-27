@@ -151,6 +151,9 @@ func validateUpdateReq(serviceID, environmentID string, req UpdateValuesReq) err
 	if req.Values == nil {
 		return fmt.Errorf("%w: values is required", ErrInvalidInput)
 	}
+	if len(req.Values) == 0 {
+		return fmt.Errorf("%w: values must not be empty", ErrInvalidInput)
+	}
 	if len(req.Values) > maxValuesKeys {
 		return fmt.Errorf("%w: values must have at most %d keys", ErrInvalidInput, maxValuesKeys)
 	}
@@ -198,7 +201,9 @@ func (s *ServiceImpl) UpdateValues(ctx context.Context, serviceID, environmentID
 
 	// Get previous values (from the most recent ConfigSnapshot, or empty)
 	var previousValues map[string]any
-	existing, _, err := s.store.ListSnapshots(ctx, 1, 0, req.OrgID, serviceID, environmentID)
+	// Use empty orgID filter — service_id + environment_id already uniquely scope the query.
+	// This is consistent with GetValues and ListHistory which also use empty orgID.
+	existing, _, err := s.store.ListSnapshots(ctx, 1, 0, "", serviceID, environmentID)
 	if err != nil {
 		return nil, fmt.Errorf("query previous config snapshot: %w", err)
 	}

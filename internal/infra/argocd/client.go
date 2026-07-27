@@ -13,6 +13,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const defaultHTTPTimeout = 30 * time.Second
+
 // Client implements the Argo CD REST API client.
 // It communicates with Argo CD via HTTP, not gRPC.
 type Client struct {
@@ -32,7 +34,7 @@ func NewClient(baseURL, token string, logger *zap.Logger) (*Client, error) {
 		baseURL: baseURL,
 		token:   token,
 		http: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: defaultHTTPTimeout,
 		},
 		logger: logger,
 	}, nil
@@ -114,7 +116,7 @@ func (c *Client) CreateApplication(ctx context.Context, name, namespace, repoURL
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("argocd create application failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("argocd create application failed: status=%d body=%s", resp.StatusCode, truncateBody(respBody))
 	}
 
 	c.logger.Info("argocd application created", zap.String("name", name))
@@ -143,7 +145,7 @@ func (c *Client) GetApplication(ctx context.Context, name string) (*AppStatus, e
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("argocd get application failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("argocd get application failed: status=%d body=%s", resp.StatusCode, truncateBody(respBody))
 	}
 
 	var result struct {
@@ -188,7 +190,7 @@ func (c *Client) SyncApplication(ctx context.Context, name string) error {
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("argocd sync application failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("argocd sync application failed: status=%d body=%s", resp.StatusCode, truncateBody(respBody))
 	}
 
 	c.logger.Info("argocd application synced", zap.String("name", name))
@@ -219,7 +221,7 @@ func (c *Client) RollbackApplication(ctx context.Context, name, revision string)
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("argocd rollback application failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("argocd rollback application failed: status=%d body=%s", resp.StatusCode, truncateBody(respBody))
 	}
 
 	c.logger.Info("argocd application rollback initiated", zap.String("name", name), zap.String("revision", revision))
@@ -242,7 +244,7 @@ func (c *Client) DeleteApplication(ctx context.Context, name string) error {
 
 	if resp.StatusCode >= 400 && resp.StatusCode != http.StatusNotFound {
 		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("argocd delete application failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("argocd delete application failed: status=%d body=%s", resp.StatusCode, truncateBody(respBody))
 	}
 
 	c.logger.Info("argocd application deleted", zap.String("name", name))
@@ -268,7 +270,7 @@ func (c *Client) UpdateApplication(ctx context.Context, name string, values map[
 	if getResp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(getResp.Body)
 		_ = getResp.Body.Close()
-		return fmt.Errorf("argocd get application for update failed: status=%d body=%s", getResp.StatusCode, string(respBody))
+		return fmt.Errorf("argocd get application for update failed: status=%d body=%s", getResp.StatusCode, truncateBody(respBody))
 	}
 
 	var existing struct {
@@ -309,11 +311,20 @@ func (c *Client) UpdateApplication(ctx context.Context, name string, values map[
 
 	if putResp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(putResp.Body)
-		return fmt.Errorf("argocd update application failed: status=%d body=%s", putResp.StatusCode, string(respBody))
+		return fmt.Errorf("argocd update application failed: status=%d body=%s", putResp.StatusCode, truncateBody(respBody))
 	}
 
 	c.logger.Info("argocd application updated", zap.String("name", name))
 	return nil
+}
+
+// truncateBody truncates an HTTP response body to at most 200 characters for safe inclusion in error messages.
+func truncateBody(b []byte) string {
+	const maxLen = 200
+	if len(b) <= maxLen {
+		return string(b)
+	}
+	return string(b[:maxLen]) + "... (truncated)"
 }
 
 func (c *Client) setHeaders(req *http.Request) {
