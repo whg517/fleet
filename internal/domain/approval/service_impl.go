@@ -12,7 +12,6 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/whg517/fleet/internal/store/ent"
 	entapproval "github.com/whg517/fleet/internal/store/ent/approval"
-	entdeployment "github.com/whg517/fleet/internal/store/ent/deployment"
 )
 
 // Approval timeout duration.
@@ -306,6 +305,18 @@ func (s *ServiceImpl) Reject(ctx context.Context, deploymentID string, req Rejec
 		return nil, fmt.Errorf("update approval: %w", err)
 	}
 
+	// Cancel the pending deployment
+	if s.trigger != nil {
+		if cancelErr := s.trigger.CancelDeployment(ctx, deploymentID); cancelErr != nil {
+			s.logger.Error("failed to cancel deployment after rejection",
+				zap.String("deployment_id", deploymentID),
+				zap.String("approval_id", a.ID),
+				zap.Error(cancelErr),
+			)
+			// Don't fail the rejection — it's already recorded.
+		}
+	}
+
 	s.logger.Info("approval rejected",
 		zap.String("id", a.ID),
 		zap.String("deployment_id", deploymentID),
@@ -372,6 +383,18 @@ func (s *ServiceImpl) CheckTimeouts(ctx context.Context) (int, error) {
 			)
 			continue
 		}
+
+		// Cancel the pending deployment
+		if s.trigger != nil {
+			if cancelErr := s.trigger.CancelDeployment(ctx, a.DeploymentID); cancelErr != nil {
+				s.logger.Error("failed to cancel deployment after timeout",
+					zap.String("deployment_id", a.DeploymentID),
+					zap.String("approval_id", a.ID),
+					zap.Error(cancelErr),
+				)
+			}
+		}
+
 		count++
 
 		s.logger.Info("approval timed out",
@@ -407,7 +430,3 @@ func toDomainApproval(a *ent.Approval) *Approval {
 	}
 }
 
-// Status constants for external use (e.g. deployment update).
-var (
-	_ = entdeployment.StatusCancelled // ensure deployment package is imported
-)

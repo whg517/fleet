@@ -576,6 +576,39 @@ func (s *ServiceImpl) TriggerDeployment(ctx context.Context, id string) error {
 	return nil
 }
 
+// CancelDeployment marks a pending deployment as cancelled.
+// This is called when an approval is rejected or times out.
+func (s *ServiceImpl) CancelDeployment(ctx context.Context, id string) error {
+	d, err := s.store.GetDeployment(ctx, id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return ErrDeploymentNotFound
+		}
+		return fmt.Errorf("get deployment: %w", err)
+	}
+
+	if d.Status != entdeployment.StatusPending {
+		return fmt.Errorf("%w: deployment is not pending (current status: %s)", ErrInvalidInput, d.Status)
+	}
+
+	upd := s.store.UpdateDeploymentOne(id).
+		SetStatus(entdeployment.StatusCancelled)
+
+	_, err = s.store.SaveDeploymentUpdate(ctx, upd)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return ErrDeploymentNotFound
+		}
+		return fmt.Errorf("cancel deployment: %w", err)
+	}
+
+	s.logger.Info("deployment cancelled",
+		zap.String("id", id),
+	)
+
+	return nil
+}
+
 // --- Helpers ---
 
 // mapArgocdStatus maps Argo CD sync/health statuses to a deployment status.

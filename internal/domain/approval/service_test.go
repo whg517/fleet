@@ -40,13 +40,20 @@ func (d *sqliteFKDriver) Open(name string) (driver.Conn, error) {
 
 // mockTrigger is a mock implementation of DeploymentTrigger for testing.
 type mockTrigger struct {
-	calls    []string
-	failWith error
+	triggerCalls    []string
+	cancelCalls     []string
+	triggerFailWith error
+	cancelFailWith  error
 }
 
 func (m *mockTrigger) TriggerDeployment(_ context.Context, deploymentID string) error {
-	m.calls = append(m.calls, deploymentID)
-	return m.failWith
+	m.triggerCalls = append(m.triggerCalls, deploymentID)
+	return m.triggerFailWith
+}
+
+func (m *mockTrigger) CancelDeployment(_ context.Context, deploymentID string) error {
+	m.cancelCalls = append(m.cancelCalls, deploymentID)
+	return m.cancelFailWith
 }
 
 // newTestService creates a test approval service with SQLite in-memory DB.
@@ -218,11 +225,11 @@ func TestApprove_Success(t *testing.T) {
 	}
 
 	// Verify trigger was called
-	if len(trigger.calls) != 1 {
-		t.Fatalf("expected 1 trigger call, got %d", len(trigger.calls))
+	if len(trigger.triggerCalls) != 1 {
+		t.Fatalf("expected 1 trigger call, got %d", len(trigger.triggerCalls))
 	}
-	if trigger.calls[0] != depID {
-		t.Errorf("trigger deploymentID: got %q, want %q", trigger.calls[0], depID)
+	if trigger.triggerCalls[0] != depID {
+		t.Errorf("trigger deploymentID: got %q, want %q", trigger.triggerCalls[0], depID)
 	}
 }
 
@@ -308,8 +315,16 @@ func TestReject_Success(t *testing.T) {
 	}
 
 	// Verify trigger was NOT called
-	if len(trigger.calls) != 0 {
-		t.Fatalf("expected 0 trigger calls, got %d", len(trigger.calls))
+	if len(trigger.triggerCalls) != 0 {
+		t.Fatalf("expected 0 trigger calls, got %d", len(trigger.triggerCalls))
+	}
+
+	// Verify CancelDeployment WAS called
+	if len(trigger.cancelCalls) != 1 {
+		t.Fatalf("expected 1 cancel call, got %d", len(trigger.cancelCalls))
+	}
+	if trigger.cancelCalls[0] != depID {
+		t.Errorf("cancel deploymentID: got %q, want %q", trigger.cancelCalls[0], depID)
 	}
 }
 
@@ -507,7 +522,7 @@ func TestList_FilterByStatus(t *testing.T) {
 }
 
 func TestCheckTimeouts_ExpiredApprovals(t *testing.T) {
-	svc, client, _ := newTestService(t)
+	svc, client, trigger := newTestService(t)
 	ctx := context.Background()
 
 	svcID, envID, _ := seedPrerequisites(t, client, true)
@@ -581,6 +596,14 @@ func TestCheckTimeouts_ExpiredApprovals(t *testing.T) {
 	}
 	if a2.Status != StatusPending {
 		t.Errorf("Status: got %q, want %q", a2.Status, StatusPending)
+	}
+
+	// Verify CancelDeployment was called for the expired one
+	if len(trigger.cancelCalls) != 1 {
+		t.Fatalf("expected 1 cancel call, got %d", len(trigger.cancelCalls))
+	}
+	if trigger.cancelCalls[0] != dep.ID {
+		t.Errorf("cancel deploymentID: got %q, want %q", trigger.cancelCalls[0], dep.ID)
 	}
 }
 

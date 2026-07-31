@@ -26,9 +26,11 @@ type LookupStore interface {
 	GetEnvironmentByID(ctx context.Context, id string) (*ent.Environment, error)
 }
 
-// DeploymentTrigger abstracts the ability to trigger a deployment after approval.
+// DeploymentTrigger abstracts deployment lifecycle actions that the approval service
+// can invoke after an approval decision (approve → trigger, reject/timeout → cancel).
 type DeploymentTrigger interface {
 	TriggerDeployment(ctx context.Context, deploymentID string) error
+	CancelDeployment(ctx context.Context, deploymentID string) error
 }
 
 // Service defines the approval management operations.

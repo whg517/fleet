@@ -78,4 +78,7 @@ type Service interface {
 	// TriggerDeployment creates the Argo CD Application for a deployment that was previously
 	// created in pending state (e.g. after approval). It transitions the deployment to deploying.
 	TriggerDeployment(ctx context.Context, id string) error
+
+	// CancelDeployment marks a pending deployment as cancelled (e.g. after approval rejection or timeout).
+	CancelDeployment(ctx context.Context, id string) error
 }
