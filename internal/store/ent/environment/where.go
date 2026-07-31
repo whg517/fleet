@@ -612,6 +612,29 @@ func HasConfigSnapshotsWith(preds ...predicate.ConfigSnapshot) predicate.Environ
 	})
 }
 
+// HasApprovals applies the HasEdge predicate on the "approvals" edge.
+func HasApprovals() predicate.Environment {
+	return predicate.Environment(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ApprovalsTable, ApprovalsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasApprovalsWith applies the HasEdge predicate on the "approvals" edge with a given conditions (other predicates).
+func HasApprovalsWith(preds ...predicate.Approval) predicate.Environment {
+	return predicate.Environment(func(s *sql.Selector) {
+		step := newApprovalsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.Environment) predicate.Environment {
 	return predicate.Environment(sql.AndPredicates(predicates...))

@@ -12,6 +12,7 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/whg517/fleet/internal/api/handler"
 	"github.com/whg517/fleet/internal/api/middleware"
+	"github.com/whg517/fleet/internal/domain/approval"
 	"github.com/whg517/fleet/internal/domain/audit"
 	"github.com/whg517/fleet/internal/domain/auth"
 	"github.com/whg517/fleet/internal/domain/cluster"
@@ -184,6 +185,23 @@ func registerRoutes(e *echo.Echo, dbDriver *entsql.Driver, redisClient *redis.Cl
 		deployments.GET("/:id", deployH.Get)
 		deployments.GET("/:id/status", deployH.GetStatus)
 		deployments.POST("/:id/rollback", deployH.Rollback)
+
+		// Approval management
+		approvalStore := approval.NewEntStore(entClient)
+		approvalLookup := approval.NewLookupEntStore(entClient)
+		approvalSvc := approval.NewService(approvalStore, approvalLookup, deploySvc, logger)
+		approvalH := handler.NewApprovalHandler(approvalSvc)
+
+		// Wire approval creator into deployment handler
+		deployH.SetApprovalCreator(approvalSvc)
+
+		deployments.POST("/:id/approve", approvalH.Approve)
+		deployments.POST("/:id/reject", approvalH.Reject)
+		deployments.GET("/:id/approval", approvalH.Get)
+
+		// Global approval list
+		approvalsGroup := v1.Group("/approvals", deployMW...)
+		approvalsGroup.GET("", approvalH.List)
 
 		// Config management (Helm values environment-level configuration)
 		configStore := configdomain.NewEntStore(entClient)

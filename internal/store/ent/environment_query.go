@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/whg517/fleet/internal/store/ent/approval"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
 	"github.com/whg517/fleet/internal/store/ent/configsnapshot"
 	"github.com/whg517/fleet/internal/store/ent/deployment"
@@ -31,6 +32,7 @@ type EnvironmentQuery struct {
 	withOrganization    *OrganizationQuery
 	withDeployments     *DeploymentQuery
 	withConfigSnapshots *ConfigSnapshotQuery
+	withApprovals       *ApprovalQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -148,6 +150,28 @@ func (_q *EnvironmentQuery) QueryConfigSnapshots() *ConfigSnapshotQuery {
 			sqlgraph.From(environment.Table, environment.FieldID, selector),
 			sqlgraph.To(configsnapshot.Table, configsnapshot.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, environment.ConfigSnapshotsTable, environment.ConfigSnapshotsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryApprovals chains the current query on the "approvals" edge.
+func (_q *EnvironmentQuery) QueryApprovals() *ApprovalQuery {
+	query := (&ApprovalClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(environment.Table, environment.FieldID, selector),
+			sqlgraph.To(approval.Table, approval.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, environment.ApprovalsTable, environment.ApprovalsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -351,6 +375,7 @@ func (_q *EnvironmentQuery) Clone() *EnvironmentQuery {
 		withOrganization:    _q.withOrganization.Clone(),
 		withDeployments:     _q.withDeployments.Clone(),
 		withConfigSnapshots: _q.withConfigSnapshots.Clone(),
+		withApprovals:       _q.withApprovals.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -398,6 +423,17 @@ func (_q *EnvironmentQuery) WithConfigSnapshots(opts ...func(*ConfigSnapshotQuer
 		opt(query)
 	}
 	_q.withConfigSnapshots = query
+	return _q
+}
+
+// WithApprovals tells the query-builder to eager-load the nodes that are connected to
+// the "approvals" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *EnvironmentQuery) WithApprovals(opts ...func(*ApprovalQuery)) *EnvironmentQuery {
+	query := (&ApprovalClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withApprovals = query
 	return _q
 }
 
@@ -479,11 +515,12 @@ func (_q *EnvironmentQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	var (
 		nodes       = []*Environment{}
 		_spec       = _q.querySpec()
-		loadedTypes = [4]bool{
+		loadedTypes = [5]bool{
 			_q.withCluster != nil,
 			_q.withOrganization != nil,
 			_q.withDeployments != nil,
 			_q.withConfigSnapshots != nil,
+			_q.withApprovals != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -527,6 +564,13 @@ func (_q *EnvironmentQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 		if err := _q.loadConfigSnapshots(ctx, query, nodes,
 			func(n *Environment) { n.Edges.ConfigSnapshots = []*ConfigSnapshot{} },
 			func(n *Environment, e *ConfigSnapshot) { n.Edges.ConfigSnapshots = append(n.Edges.ConfigSnapshots, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withApprovals; query != nil {
+		if err := _q.loadApprovals(ctx, query, nodes,
+			func(n *Environment) { n.Edges.Approvals = []*Approval{} },
+			func(n *Environment, e *Approval) { n.Edges.Approvals = append(n.Edges.Approvals, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -636,6 +680,36 @@ func (_q *EnvironmentQuery) loadConfigSnapshots(ctx context.Context, query *Conf
 	}
 	query.Where(predicate.ConfigSnapshot(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(environment.ConfigSnapshotsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.EnvironmentID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "environment_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *EnvironmentQuery) loadApprovals(ctx context.Context, query *ApprovalQuery, nodes []*Environment, init func(*Environment), assign func(*Environment, *Approval)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*Environment)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(approval.FieldEnvironmentID)
+	}
+	query.Where(predicate.Approval(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(environment.ApprovalsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

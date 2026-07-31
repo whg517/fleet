@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/whg517/fleet/internal/store/ent/approval"
 	"github.com/whg517/fleet/internal/store/ent/configsnapshot"
 	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
@@ -202,6 +203,21 @@ func (_c *ServiceCreate) AddConfigSnapshots(v ...*ConfigSnapshot) *ServiceCreate
 	return _c.AddConfigSnapshotIDs(ids...)
 }
 
+// AddApprovalIDs adds the "approvals" edge to the Approval entity by IDs.
+func (_c *ServiceCreate) AddApprovalIDs(ids ...string) *ServiceCreate {
+	_c.mutation.AddApprovalIDs(ids...)
+	return _c
+}
+
+// AddApprovals adds the "approvals" edges to the Approval entity.
+func (_c *ServiceCreate) AddApprovals(v ...*Approval) *ServiceCreate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddApprovalIDs(ids...)
+}
+
 // Mutation returns the ServiceMutation object of the builder.
 func (_c *ServiceCreate) Mutation() *ServiceMutation {
 	return _c.mutation
@@ -388,6 +404,22 @@ func (_c *ServiceCreate) createSpec() (*Service, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(configsnapshot.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ApprovalsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   service.ApprovalsTable,
+			Columns: []string{service.ApprovalsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(approval.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

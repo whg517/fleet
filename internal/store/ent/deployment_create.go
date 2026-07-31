@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/whg517/fleet/internal/store/ent/approval"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
 	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/environment"
@@ -224,6 +225,21 @@ func (_c *DeploymentCreate) SetNillableOrganizationID(id *string) *DeploymentCre
 // SetOrganization sets the "organization" edge to the Organization entity.
 func (_c *DeploymentCreate) SetOrganization(v *Organization) *DeploymentCreate {
 	return _c.SetOrganizationID(v.ID)
+}
+
+// AddApprovalIDs adds the "approvals" edge to the Approval entity by IDs.
+func (_c *DeploymentCreate) AddApprovalIDs(ids ...string) *DeploymentCreate {
+	_c.mutation.AddApprovalIDs(ids...)
+	return _c
+}
+
+// AddApprovals adds the "approvals" edges to the Approval entity.
+func (_c *DeploymentCreate) AddApprovals(v ...*Approval) *DeploymentCreate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddApprovalIDs(ids...)
 }
 
 // Mutation returns the DeploymentMutation object of the builder.
@@ -485,6 +501,22 @@ func (_c *DeploymentCreate) createSpec() (*Deployment, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.OrgID = nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ApprovalsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   deployment.ApprovalsTable,
+			Columns: []string{deployment.ApprovalsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(approval.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

@@ -67,6 +67,7 @@ func (Deployment) Edges() []ent.Edge {
 			Ref("deployments").
 			Field("org_id").
 			Unique(),
+		edge.To("approvals", Approval.Type),
 	}
 }
 

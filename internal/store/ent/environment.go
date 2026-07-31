@@ -54,9 +54,11 @@ type EnvironmentEdges struct {
 	Deployments []*Deployment `json:"deployments,omitempty"`
 	// ConfigSnapshots holds the value of the config_snapshots edge.
 	ConfigSnapshots []*ConfigSnapshot `json:"config_snapshots,omitempty"`
+	// Approvals holds the value of the approvals edge.
+	Approvals []*Approval `json:"approvals,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [4]bool
+	loadedTypes [5]bool
 }
 
 // ClusterOrErr returns the Cluster value or an error if the edge
@@ -97,6 +99,15 @@ func (e EnvironmentEdges) ConfigSnapshotsOrErr() ([]*ConfigSnapshot, error) {
 		return e.ConfigSnapshots, nil
 	}
 	return nil, &NotLoadedError{edge: "config_snapshots"}
+}
+
+// ApprovalsOrErr returns the Approvals value or an error if the edge
+// was not loaded in eager-loading.
+func (e EnvironmentEdges) ApprovalsOrErr() ([]*Approval, error) {
+	if e.loadedTypes[4] {
+		return e.Approvals, nil
+	}
+	return nil, &NotLoadedError{edge: "approvals"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -220,6 +231,11 @@ func (_m *Environment) QueryDeployments() *DeploymentQuery {
 // QueryConfigSnapshots queries the "config_snapshots" edge of the Environment entity.
 func (_m *Environment) QueryConfigSnapshots() *ConfigSnapshotQuery {
 	return NewEnvironmentClient(_m.config).QueryConfigSnapshots(_m)
+}
+
+// QueryApprovals queries the "approvals" edge of the Environment entity.
+func (_m *Environment) QueryApprovals() *ApprovalQuery {
+	return NewEnvironmentClient(_m.config).QueryApprovals(_m)
 }
 
 // Update returns a builder for updating this Environment.

@@ -4,7 +4,6 @@ package ent
 
 import (
 	"context"
-	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -13,7 +12,6 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/whg517/fleet/internal/store/ent/approval"
-	"github.com/whg517/fleet/internal/store/ent/cluster"
 	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/environment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
@@ -21,56 +19,77 @@ import (
 	"github.com/whg517/fleet/internal/store/ent/service"
 )
 
-// DeploymentQuery is the builder for querying Deployment entities.
-type DeploymentQuery struct {
+// ApprovalQuery is the builder for querying Approval entities.
+type ApprovalQuery struct {
 	config
 	ctx              *QueryContext
-	order            []deployment.OrderOption
+	order            []approval.OrderOption
 	inters           []Interceptor
-	predicates       []predicate.Deployment
+	predicates       []predicate.Approval
+	withDeployment   *DeploymentQuery
 	withService      *ServiceQuery
 	withEnvironment  *EnvironmentQuery
-	withCluster      *ClusterQuery
 	withOrganization *OrganizationQuery
-	withApprovals    *ApprovalQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
 }
 
-// Where adds a new predicate for the DeploymentQuery builder.
-func (_q *DeploymentQuery) Where(ps ...predicate.Deployment) *DeploymentQuery {
+// Where adds a new predicate for the ApprovalQuery builder.
+func (_q *ApprovalQuery) Where(ps ...predicate.Approval) *ApprovalQuery {
 	_q.predicates = append(_q.predicates, ps...)
 	return _q
 }
 
 // Limit the number of records to be returned by this query.
-func (_q *DeploymentQuery) Limit(limit int) *DeploymentQuery {
+func (_q *ApprovalQuery) Limit(limit int) *ApprovalQuery {
 	_q.ctx.Limit = &limit
 	return _q
 }
 
 // Offset to start from.
-func (_q *DeploymentQuery) Offset(offset int) *DeploymentQuery {
+func (_q *ApprovalQuery) Offset(offset int) *ApprovalQuery {
 	_q.ctx.Offset = &offset
 	return _q
 }
 
 // Unique configures the query builder to filter duplicate records on query.
 // By default, unique is set to true, and can be disabled using this method.
-func (_q *DeploymentQuery) Unique(unique bool) *DeploymentQuery {
+func (_q *ApprovalQuery) Unique(unique bool) *ApprovalQuery {
 	_q.ctx.Unique = &unique
 	return _q
 }
 
 // Order specifies how the records should be ordered.
-func (_q *DeploymentQuery) Order(o ...deployment.OrderOption) *DeploymentQuery {
+func (_q *ApprovalQuery) Order(o ...approval.OrderOption) *ApprovalQuery {
 	_q.order = append(_q.order, o...)
 	return _q
 }
 
+// QueryDeployment chains the current query on the "deployment" edge.
+func (_q *ApprovalQuery) QueryDeployment() *DeploymentQuery {
+	query := (&DeploymentClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(approval.Table, approval.FieldID, selector),
+			sqlgraph.To(deployment.Table, deployment.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, approval.DeploymentTable, approval.DeploymentColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
 // QueryService chains the current query on the "service" edge.
-func (_q *DeploymentQuery) QueryService() *ServiceQuery {
+func (_q *ApprovalQuery) QueryService() *ServiceQuery {
 	query := (&ServiceClient{config: _q.config}).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
@@ -81,9 +100,9 @@ func (_q *DeploymentQuery) QueryService() *ServiceQuery {
 			return nil, err
 		}
 		step := sqlgraph.NewStep(
-			sqlgraph.From(deployment.Table, deployment.FieldID, selector),
+			sqlgraph.From(approval.Table, approval.FieldID, selector),
 			sqlgraph.To(service.Table, service.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, deployment.ServiceTable, deployment.ServiceColumn),
+			sqlgraph.Edge(sqlgraph.M2O, true, approval.ServiceTable, approval.ServiceColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -92,7 +111,7 @@ func (_q *DeploymentQuery) QueryService() *ServiceQuery {
 }
 
 // QueryEnvironment chains the current query on the "environment" edge.
-func (_q *DeploymentQuery) QueryEnvironment() *EnvironmentQuery {
+func (_q *ApprovalQuery) QueryEnvironment() *EnvironmentQuery {
 	query := (&EnvironmentClient{config: _q.config}).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
@@ -103,31 +122,9 @@ func (_q *DeploymentQuery) QueryEnvironment() *EnvironmentQuery {
 			return nil, err
 		}
 		step := sqlgraph.NewStep(
-			sqlgraph.From(deployment.Table, deployment.FieldID, selector),
+			sqlgraph.From(approval.Table, approval.FieldID, selector),
 			sqlgraph.To(environment.Table, environment.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, deployment.EnvironmentTable, deployment.EnvironmentColumn),
-		)
-		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
-}
-
-// QueryCluster chains the current query on the "cluster" edge.
-func (_q *DeploymentQuery) QueryCluster() *ClusterQuery {
-	query := (&ClusterClient{config: _q.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := _q.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := _q.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(deployment.Table, deployment.FieldID, selector),
-			sqlgraph.To(cluster.Table, cluster.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, deployment.ClusterTable, deployment.ClusterColumn),
+			sqlgraph.Edge(sqlgraph.M2O, true, approval.EnvironmentTable, approval.EnvironmentColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -136,7 +133,7 @@ func (_q *DeploymentQuery) QueryCluster() *ClusterQuery {
 }
 
 // QueryOrganization chains the current query on the "organization" edge.
-func (_q *DeploymentQuery) QueryOrganization() *OrganizationQuery {
+func (_q *ApprovalQuery) QueryOrganization() *OrganizationQuery {
 	query := (&OrganizationClient{config: _q.config}).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
@@ -147,9 +144,9 @@ func (_q *DeploymentQuery) QueryOrganization() *OrganizationQuery {
 			return nil, err
 		}
 		step := sqlgraph.NewStep(
-			sqlgraph.From(deployment.Table, deployment.FieldID, selector),
+			sqlgraph.From(approval.Table, approval.FieldID, selector),
 			sqlgraph.To(organization.Table, organization.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, deployment.OrganizationTable, deployment.OrganizationColumn),
+			sqlgraph.Edge(sqlgraph.M2O, true, approval.OrganizationTable, approval.OrganizationColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -157,43 +154,21 @@ func (_q *DeploymentQuery) QueryOrganization() *OrganizationQuery {
 	return query
 }
 
-// QueryApprovals chains the current query on the "approvals" edge.
-func (_q *DeploymentQuery) QueryApprovals() *ApprovalQuery {
-	query := (&ApprovalClient{config: _q.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := _q.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := _q.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(deployment.Table, deployment.FieldID, selector),
-			sqlgraph.To(approval.Table, approval.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, deployment.ApprovalsTable, deployment.ApprovalsColumn),
-		)
-		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
-}
-
-// First returns the first Deployment entity from the query.
-// Returns a *NotFoundError when no Deployment was found.
-func (_q *DeploymentQuery) First(ctx context.Context) (*Deployment, error) {
+// First returns the first Approval entity from the query.
+// Returns a *NotFoundError when no Approval was found.
+func (_q *ApprovalQuery) First(ctx context.Context) (*Approval, error) {
 	nodes, err := _q.Limit(1).All(setContextOp(ctx, _q.ctx, ent.OpQueryFirst))
 	if err != nil {
 		return nil, err
 	}
 	if len(nodes) == 0 {
-		return nil, &NotFoundError{deployment.Label}
+		return nil, &NotFoundError{approval.Label}
 	}
 	return nodes[0], nil
 }
 
 // FirstX is like First, but panics if an error occurs.
-func (_q *DeploymentQuery) FirstX(ctx context.Context) *Deployment {
+func (_q *ApprovalQuery) FirstX(ctx context.Context) *Approval {
 	node, err := _q.First(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -201,22 +176,22 @@ func (_q *DeploymentQuery) FirstX(ctx context.Context) *Deployment {
 	return node
 }
 
-// FirstID returns the first Deployment ID from the query.
-// Returns a *NotFoundError when no Deployment ID was found.
-func (_q *DeploymentQuery) FirstID(ctx context.Context) (id string, err error) {
+// FirstID returns the first Approval ID from the query.
+// Returns a *NotFoundError when no Approval ID was found.
+func (_q *ApprovalQuery) FirstID(ctx context.Context) (id string, err error) {
 	var ids []string
 	if ids, err = _q.Limit(1).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryFirstID)); err != nil {
 		return
 	}
 	if len(ids) == 0 {
-		err = &NotFoundError{deployment.Label}
+		err = &NotFoundError{approval.Label}
 		return
 	}
 	return ids[0], nil
 }
 
 // FirstIDX is like FirstID, but panics if an error occurs.
-func (_q *DeploymentQuery) FirstIDX(ctx context.Context) string {
+func (_q *ApprovalQuery) FirstIDX(ctx context.Context) string {
 	id, err := _q.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -224,10 +199,10 @@ func (_q *DeploymentQuery) FirstIDX(ctx context.Context) string {
 	return id
 }
 
-// Only returns a single Deployment entity found by the query, ensuring it only returns one.
-// Returns a *NotSingularError when more than one Deployment entity is found.
-// Returns a *NotFoundError when no Deployment entities are found.
-func (_q *DeploymentQuery) Only(ctx context.Context) (*Deployment, error) {
+// Only returns a single Approval entity found by the query, ensuring it only returns one.
+// Returns a *NotSingularError when more than one Approval entity is found.
+// Returns a *NotFoundError when no Approval entities are found.
+func (_q *ApprovalQuery) Only(ctx context.Context) (*Approval, error) {
 	nodes, err := _q.Limit(2).All(setContextOp(ctx, _q.ctx, ent.OpQueryOnly))
 	if err != nil {
 		return nil, err
@@ -236,14 +211,14 @@ func (_q *DeploymentQuery) Only(ctx context.Context) (*Deployment, error) {
 	case 1:
 		return nodes[0], nil
 	case 0:
-		return nil, &NotFoundError{deployment.Label}
+		return nil, &NotFoundError{approval.Label}
 	default:
-		return nil, &NotSingularError{deployment.Label}
+		return nil, &NotSingularError{approval.Label}
 	}
 }
 
 // OnlyX is like Only, but panics if an error occurs.
-func (_q *DeploymentQuery) OnlyX(ctx context.Context) *Deployment {
+func (_q *ApprovalQuery) OnlyX(ctx context.Context) *Approval {
 	node, err := _q.Only(ctx)
 	if err != nil {
 		panic(err)
@@ -251,10 +226,10 @@ func (_q *DeploymentQuery) OnlyX(ctx context.Context) *Deployment {
 	return node
 }
 
-// OnlyID is like Only, but returns the only Deployment ID in the query.
-// Returns a *NotSingularError when more than one Deployment ID is found.
+// OnlyID is like Only, but returns the only Approval ID in the query.
+// Returns a *NotSingularError when more than one Approval ID is found.
 // Returns a *NotFoundError when no entities are found.
-func (_q *DeploymentQuery) OnlyID(ctx context.Context) (id string, err error) {
+func (_q *ApprovalQuery) OnlyID(ctx context.Context) (id string, err error) {
 	var ids []string
 	if ids, err = _q.Limit(2).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryOnlyID)); err != nil {
 		return
@@ -263,15 +238,15 @@ func (_q *DeploymentQuery) OnlyID(ctx context.Context) (id string, err error) {
 	case 1:
 		id = ids[0]
 	case 0:
-		err = &NotFoundError{deployment.Label}
+		err = &NotFoundError{approval.Label}
 	default:
-		err = &NotSingularError{deployment.Label}
+		err = &NotSingularError{approval.Label}
 	}
 	return
 }
 
 // OnlyIDX is like OnlyID, but panics if an error occurs.
-func (_q *DeploymentQuery) OnlyIDX(ctx context.Context) string {
+func (_q *ApprovalQuery) OnlyIDX(ctx context.Context) string {
 	id, err := _q.OnlyID(ctx)
 	if err != nil {
 		panic(err)
@@ -279,18 +254,18 @@ func (_q *DeploymentQuery) OnlyIDX(ctx context.Context) string {
 	return id
 }
 
-// All executes the query and returns a list of Deployments.
-func (_q *DeploymentQuery) All(ctx context.Context) ([]*Deployment, error) {
+// All executes the query and returns a list of Approvals.
+func (_q *ApprovalQuery) All(ctx context.Context) ([]*Approval, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryAll)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return nil, err
 	}
-	qr := querierAll[[]*Deployment, *DeploymentQuery]()
-	return withInterceptors[[]*Deployment](ctx, _q, qr, _q.inters)
+	qr := querierAll[[]*Approval, *ApprovalQuery]()
+	return withInterceptors[[]*Approval](ctx, _q, qr, _q.inters)
 }
 
 // AllX is like All, but panics if an error occurs.
-func (_q *DeploymentQuery) AllX(ctx context.Context) []*Deployment {
+func (_q *ApprovalQuery) AllX(ctx context.Context) []*Approval {
 	nodes, err := _q.All(ctx)
 	if err != nil {
 		panic(err)
@@ -298,20 +273,20 @@ func (_q *DeploymentQuery) AllX(ctx context.Context) []*Deployment {
 	return nodes
 }
 
-// IDs executes the query and returns a list of Deployment IDs.
-func (_q *DeploymentQuery) IDs(ctx context.Context) (ids []string, err error) {
+// IDs executes the query and returns a list of Approval IDs.
+func (_q *ApprovalQuery) IDs(ctx context.Context) (ids []string, err error) {
 	if _q.ctx.Unique == nil && _q.path != nil {
 		_q.Unique(true)
 	}
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryIDs)
-	if err = _q.Select(deployment.FieldID).Scan(ctx, &ids); err != nil {
+	if err = _q.Select(approval.FieldID).Scan(ctx, &ids); err != nil {
 		return nil, err
 	}
 	return ids, nil
 }
 
 // IDsX is like IDs, but panics if an error occurs.
-func (_q *DeploymentQuery) IDsX(ctx context.Context) []string {
+func (_q *ApprovalQuery) IDsX(ctx context.Context) []string {
 	ids, err := _q.IDs(ctx)
 	if err != nil {
 		panic(err)
@@ -320,16 +295,16 @@ func (_q *DeploymentQuery) IDsX(ctx context.Context) []string {
 }
 
 // Count returns the count of the given query.
-func (_q *DeploymentQuery) Count(ctx context.Context) (int, error) {
+func (_q *ApprovalQuery) Count(ctx context.Context) (int, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryCount)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return 0, err
 	}
-	return withInterceptors[int](ctx, _q, querierCount[*DeploymentQuery](), _q.inters)
+	return withInterceptors[int](ctx, _q, querierCount[*ApprovalQuery](), _q.inters)
 }
 
 // CountX is like Count, but panics if an error occurs.
-func (_q *DeploymentQuery) CountX(ctx context.Context) int {
+func (_q *ApprovalQuery) CountX(ctx context.Context) int {
 	count, err := _q.Count(ctx)
 	if err != nil {
 		panic(err)
@@ -338,7 +313,7 @@ func (_q *DeploymentQuery) CountX(ctx context.Context) int {
 }
 
 // Exist returns true if the query has elements in the graph.
-func (_q *DeploymentQuery) Exist(ctx context.Context) (bool, error) {
+func (_q *ApprovalQuery) Exist(ctx context.Context) (bool, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryExist)
 	switch _, err := _q.FirstID(ctx); {
 	case IsNotFound(err):
@@ -351,7 +326,7 @@ func (_q *DeploymentQuery) Exist(ctx context.Context) (bool, error) {
 }
 
 // ExistX is like Exist, but panics if an error occurs.
-func (_q *DeploymentQuery) ExistX(ctx context.Context) bool {
+func (_q *ApprovalQuery) ExistX(ctx context.Context) bool {
 	exist, err := _q.Exist(ctx)
 	if err != nil {
 		panic(err)
@@ -359,32 +334,42 @@ func (_q *DeploymentQuery) ExistX(ctx context.Context) bool {
 	return exist
 }
 
-// Clone returns a duplicate of the DeploymentQuery builder, including all associated steps. It can be
+// Clone returns a duplicate of the ApprovalQuery builder, including all associated steps. It can be
 // used to prepare common query builders and use them differently after the clone is made.
-func (_q *DeploymentQuery) Clone() *DeploymentQuery {
+func (_q *ApprovalQuery) Clone() *ApprovalQuery {
 	if _q == nil {
 		return nil
 	}
-	return &DeploymentQuery{
+	return &ApprovalQuery{
 		config:           _q.config,
 		ctx:              _q.ctx.Clone(),
-		order:            append([]deployment.OrderOption{}, _q.order...),
+		order:            append([]approval.OrderOption{}, _q.order...),
 		inters:           append([]Interceptor{}, _q.inters...),
-		predicates:       append([]predicate.Deployment{}, _q.predicates...),
+		predicates:       append([]predicate.Approval{}, _q.predicates...),
+		withDeployment:   _q.withDeployment.Clone(),
 		withService:      _q.withService.Clone(),
 		withEnvironment:  _q.withEnvironment.Clone(),
-		withCluster:      _q.withCluster.Clone(),
 		withOrganization: _q.withOrganization.Clone(),
-		withApprovals:    _q.withApprovals.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
 	}
 }
 
+// WithDeployment tells the query-builder to eager-load the nodes that are connected to
+// the "deployment" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ApprovalQuery) WithDeployment(opts ...func(*DeploymentQuery)) *ApprovalQuery {
+	query := (&DeploymentClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withDeployment = query
+	return _q
+}
+
 // WithService tells the query-builder to eager-load the nodes that are connected to
 // the "service" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *DeploymentQuery) WithService(opts ...func(*ServiceQuery)) *DeploymentQuery {
+func (_q *ApprovalQuery) WithService(opts ...func(*ServiceQuery)) *ApprovalQuery {
 	query := (&ServiceClient{config: _q.config}).Query()
 	for _, opt := range opts {
 		opt(query)
@@ -395,7 +380,7 @@ func (_q *DeploymentQuery) WithService(opts ...func(*ServiceQuery)) *DeploymentQ
 
 // WithEnvironment tells the query-builder to eager-load the nodes that are connected to
 // the "environment" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *DeploymentQuery) WithEnvironment(opts ...func(*EnvironmentQuery)) *DeploymentQuery {
+func (_q *ApprovalQuery) WithEnvironment(opts ...func(*EnvironmentQuery)) *ApprovalQuery {
 	query := (&EnvironmentClient{config: _q.config}).Query()
 	for _, opt := range opts {
 		opt(query)
@@ -404,36 +389,14 @@ func (_q *DeploymentQuery) WithEnvironment(opts ...func(*EnvironmentQuery)) *Dep
 	return _q
 }
 
-// WithCluster tells the query-builder to eager-load the nodes that are connected to
-// the "cluster" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *DeploymentQuery) WithCluster(opts ...func(*ClusterQuery)) *DeploymentQuery {
-	query := (&ClusterClient{config: _q.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	_q.withCluster = query
-	return _q
-}
-
 // WithOrganization tells the query-builder to eager-load the nodes that are connected to
 // the "organization" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *DeploymentQuery) WithOrganization(opts ...func(*OrganizationQuery)) *DeploymentQuery {
+func (_q *ApprovalQuery) WithOrganization(opts ...func(*OrganizationQuery)) *ApprovalQuery {
 	query := (&OrganizationClient{config: _q.config}).Query()
 	for _, opt := range opts {
 		opt(query)
 	}
 	_q.withOrganization = query
-	return _q
-}
-
-// WithApprovals tells the query-builder to eager-load the nodes that are connected to
-// the "approvals" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *DeploymentQuery) WithApprovals(opts ...func(*ApprovalQuery)) *DeploymentQuery {
-	query := (&ApprovalClient{config: _q.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	_q.withApprovals = query
 	return _q
 }
 
@@ -447,15 +410,15 @@ func (_q *DeploymentQuery) WithApprovals(opts ...func(*ApprovalQuery)) *Deployme
 //		Count int `json:"count,omitempty"`
 //	}
 //
-//	client.Deployment.Query().
-//		GroupBy(deployment.FieldOrgID).
+//	client.Approval.Query().
+//		GroupBy(approval.FieldOrgID).
 //		Aggregate(ent.Count()).
 //		Scan(ctx, &v)
-func (_q *DeploymentQuery) GroupBy(field string, fields ...string) *DeploymentGroupBy {
+func (_q *ApprovalQuery) GroupBy(field string, fields ...string) *ApprovalGroupBy {
 	_q.ctx.Fields = append([]string{field}, fields...)
-	grbuild := &DeploymentGroupBy{build: _q}
+	grbuild := &ApprovalGroupBy{build: _q}
 	grbuild.flds = &_q.ctx.Fields
-	grbuild.label = deployment.Label
+	grbuild.label = approval.Label
 	grbuild.scan = grbuild.Scan
 	return grbuild
 }
@@ -469,23 +432,23 @@ func (_q *DeploymentQuery) GroupBy(field string, fields ...string) *DeploymentGr
 //		OrgID string `json:"org_id,omitempty"`
 //	}
 //
-//	client.Deployment.Query().
-//		Select(deployment.FieldOrgID).
+//	client.Approval.Query().
+//		Select(approval.FieldOrgID).
 //		Scan(ctx, &v)
-func (_q *DeploymentQuery) Select(fields ...string) *DeploymentSelect {
+func (_q *ApprovalQuery) Select(fields ...string) *ApprovalSelect {
 	_q.ctx.Fields = append(_q.ctx.Fields, fields...)
-	sbuild := &DeploymentSelect{DeploymentQuery: _q}
-	sbuild.label = deployment.Label
+	sbuild := &ApprovalSelect{ApprovalQuery: _q}
+	sbuild.label = approval.Label
 	sbuild.flds, sbuild.scan = &_q.ctx.Fields, sbuild.Scan
 	return sbuild
 }
 
-// Aggregate returns a DeploymentSelect configured with the given aggregations.
-func (_q *DeploymentQuery) Aggregate(fns ...AggregateFunc) *DeploymentSelect {
+// Aggregate returns a ApprovalSelect configured with the given aggregations.
+func (_q *ApprovalQuery) Aggregate(fns ...AggregateFunc) *ApprovalSelect {
 	return _q.Select().Aggregate(fns...)
 }
 
-func (_q *DeploymentQuery) prepareQuery(ctx context.Context) error {
+func (_q *ApprovalQuery) prepareQuery(ctx context.Context) error {
 	for _, inter := range _q.inters {
 		if inter == nil {
 			return fmt.Errorf("ent: uninitialized interceptor (forgotten import ent/runtime?)")
@@ -497,7 +460,7 @@ func (_q *DeploymentQuery) prepareQuery(ctx context.Context) error {
 		}
 	}
 	for _, f := range _q.ctx.Fields {
-		if !deployment.ValidColumn(f) {
+		if !approval.ValidColumn(f) {
 			return &ValidationError{Name: f, err: fmt.Errorf("ent: invalid field %q for query", f)}
 		}
 	}
@@ -511,23 +474,22 @@ func (_q *DeploymentQuery) prepareQuery(ctx context.Context) error {
 	return nil
 }
 
-func (_q *DeploymentQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Deployment, error) {
+func (_q *ApprovalQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Approval, error) {
 	var (
-		nodes       = []*Deployment{}
+		nodes       = []*Approval{}
 		_spec       = _q.querySpec()
-		loadedTypes = [5]bool{
+		loadedTypes = [4]bool{
+			_q.withDeployment != nil,
 			_q.withService != nil,
 			_q.withEnvironment != nil,
-			_q.withCluster != nil,
 			_q.withOrganization != nil,
-			_q.withApprovals != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
-		return (*Deployment).scanValues(nil, columns)
+		return (*Approval).scanValues(nil, columns)
 	}
 	_spec.Assign = func(columns []string, values []any) error {
-		node := &Deployment{config: _q.config}
+		node := &Approval{config: _q.config}
 		nodes = append(nodes, node)
 		node.Edges.loadedTypes = loadedTypes
 		return node.assignValues(columns, values)
@@ -541,43 +503,65 @@ func (_q *DeploymentQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*D
 	if len(nodes) == 0 {
 		return nodes, nil
 	}
+	if query := _q.withDeployment; query != nil {
+		if err := _q.loadDeployment(ctx, query, nodes, nil,
+			func(n *Approval, e *Deployment) { n.Edges.Deployment = e }); err != nil {
+			return nil, err
+		}
+	}
 	if query := _q.withService; query != nil {
 		if err := _q.loadService(ctx, query, nodes, nil,
-			func(n *Deployment, e *Service) { n.Edges.Service = e }); err != nil {
+			func(n *Approval, e *Service) { n.Edges.Service = e }); err != nil {
 			return nil, err
 		}
 	}
 	if query := _q.withEnvironment; query != nil {
 		if err := _q.loadEnvironment(ctx, query, nodes, nil,
-			func(n *Deployment, e *Environment) { n.Edges.Environment = e }); err != nil {
-			return nil, err
-		}
-	}
-	if query := _q.withCluster; query != nil {
-		if err := _q.loadCluster(ctx, query, nodes, nil,
-			func(n *Deployment, e *Cluster) { n.Edges.Cluster = e }); err != nil {
+			func(n *Approval, e *Environment) { n.Edges.Environment = e }); err != nil {
 			return nil, err
 		}
 	}
 	if query := _q.withOrganization; query != nil {
 		if err := _q.loadOrganization(ctx, query, nodes, nil,
-			func(n *Deployment, e *Organization) { n.Edges.Organization = e }); err != nil {
-			return nil, err
-		}
-	}
-	if query := _q.withApprovals; query != nil {
-		if err := _q.loadApprovals(ctx, query, nodes,
-			func(n *Deployment) { n.Edges.Approvals = []*Approval{} },
-			func(n *Deployment, e *Approval) { n.Edges.Approvals = append(n.Edges.Approvals, e) }); err != nil {
+			func(n *Approval, e *Organization) { n.Edges.Organization = e }); err != nil {
 			return nil, err
 		}
 	}
 	return nodes, nil
 }
 
-func (_q *DeploymentQuery) loadService(ctx context.Context, query *ServiceQuery, nodes []*Deployment, init func(*Deployment), assign func(*Deployment, *Service)) error {
+func (_q *ApprovalQuery) loadDeployment(ctx context.Context, query *DeploymentQuery, nodes []*Approval, init func(*Approval), assign func(*Approval, *Deployment)) error {
 	ids := make([]string, 0, len(nodes))
-	nodeids := make(map[string][]*Deployment)
+	nodeids := make(map[string][]*Approval)
+	for i := range nodes {
+		fk := nodes[i].DeploymentID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(deployment.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "deployment_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
+func (_q *ApprovalQuery) loadService(ctx context.Context, query *ServiceQuery, nodes []*Approval, init func(*Approval), assign func(*Approval, *Service)) error {
+	ids := make([]string, 0, len(nodes))
+	nodeids := make(map[string][]*Approval)
 	for i := range nodes {
 		fk := nodes[i].ServiceID
 		if _, ok := nodeids[fk]; !ok {
@@ -604,9 +588,9 @@ func (_q *DeploymentQuery) loadService(ctx context.Context, query *ServiceQuery,
 	}
 	return nil
 }
-func (_q *DeploymentQuery) loadEnvironment(ctx context.Context, query *EnvironmentQuery, nodes []*Deployment, init func(*Deployment), assign func(*Deployment, *Environment)) error {
+func (_q *ApprovalQuery) loadEnvironment(ctx context.Context, query *EnvironmentQuery, nodes []*Approval, init func(*Approval), assign func(*Approval, *Environment)) error {
 	ids := make([]string, 0, len(nodes))
-	nodeids := make(map[string][]*Deployment)
+	nodeids := make(map[string][]*Approval)
 	for i := range nodes {
 		fk := nodes[i].EnvironmentID
 		if _, ok := nodeids[fk]; !ok {
@@ -633,38 +617,9 @@ func (_q *DeploymentQuery) loadEnvironment(ctx context.Context, query *Environme
 	}
 	return nil
 }
-func (_q *DeploymentQuery) loadCluster(ctx context.Context, query *ClusterQuery, nodes []*Deployment, init func(*Deployment), assign func(*Deployment, *Cluster)) error {
+func (_q *ApprovalQuery) loadOrganization(ctx context.Context, query *OrganizationQuery, nodes []*Approval, init func(*Approval), assign func(*Approval, *Organization)) error {
 	ids := make([]string, 0, len(nodes))
-	nodeids := make(map[string][]*Deployment)
-	for i := range nodes {
-		fk := nodes[i].ClusterID
-		if _, ok := nodeids[fk]; !ok {
-			ids = append(ids, fk)
-		}
-		nodeids[fk] = append(nodeids[fk], nodes[i])
-	}
-	if len(ids) == 0 {
-		return nil
-	}
-	query.Where(cluster.IDIn(ids...))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		nodes, ok := nodeids[n.ID]
-		if !ok {
-			return fmt.Errorf(`unexpected foreign-key "cluster_id" returned %v`, n.ID)
-		}
-		for i := range nodes {
-			assign(nodes[i], n)
-		}
-	}
-	return nil
-}
-func (_q *DeploymentQuery) loadOrganization(ctx context.Context, query *OrganizationQuery, nodes []*Deployment, init func(*Deployment), assign func(*Deployment, *Organization)) error {
-	ids := make([]string, 0, len(nodes))
-	nodeids := make(map[string][]*Deployment)
+	nodeids := make(map[string][]*Approval)
 	for i := range nodes {
 		fk := nodes[i].OrgID
 		if _, ok := nodeids[fk]; !ok {
@@ -691,38 +646,8 @@ func (_q *DeploymentQuery) loadOrganization(ctx context.Context, query *Organiza
 	}
 	return nil
 }
-func (_q *DeploymentQuery) loadApprovals(ctx context.Context, query *ApprovalQuery, nodes []*Deployment, init func(*Deployment), assign func(*Deployment, *Approval)) error {
-	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[string]*Deployment)
-	for i := range nodes {
-		fks = append(fks, nodes[i].ID)
-		nodeids[nodes[i].ID] = nodes[i]
-		if init != nil {
-			init(nodes[i])
-		}
-	}
-	if len(query.ctx.Fields) > 0 {
-		query.ctx.AppendFieldOnce(approval.FieldDeploymentID)
-	}
-	query.Where(predicate.Approval(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(deployment.ApprovalsColumn), fks...))
-	}))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		fk := n.DeploymentID
-		node, ok := nodeids[fk]
-		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "deployment_id" returned %v for node %v`, fk, n.ID)
-		}
-		assign(node, n)
-	}
-	return nil
-}
 
-func (_q *DeploymentQuery) sqlCount(ctx context.Context) (int, error) {
+func (_q *ApprovalQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
 	_spec.Node.Columns = _q.ctx.Fields
 	if len(_q.ctx.Fields) > 0 {
@@ -731,8 +656,8 @@ func (_q *DeploymentQuery) sqlCount(ctx context.Context) (int, error) {
 	return sqlgraph.CountNodes(ctx, _q.driver, _spec)
 }
 
-func (_q *DeploymentQuery) querySpec() *sqlgraph.QuerySpec {
-	_spec := sqlgraph.NewQuerySpec(deployment.Table, deployment.Columns, sqlgraph.NewFieldSpec(deployment.FieldID, field.TypeString))
+func (_q *ApprovalQuery) querySpec() *sqlgraph.QuerySpec {
+	_spec := sqlgraph.NewQuerySpec(approval.Table, approval.Columns, sqlgraph.NewFieldSpec(approval.FieldID, field.TypeString))
 	_spec.From = _q.sql
 	if unique := _q.ctx.Unique; unique != nil {
 		_spec.Unique = *unique
@@ -741,23 +666,23 @@ func (_q *DeploymentQuery) querySpec() *sqlgraph.QuerySpec {
 	}
 	if fields := _q.ctx.Fields; len(fields) > 0 {
 		_spec.Node.Columns = make([]string, 0, len(fields))
-		_spec.Node.Columns = append(_spec.Node.Columns, deployment.FieldID)
+		_spec.Node.Columns = append(_spec.Node.Columns, approval.FieldID)
 		for i := range fields {
-			if fields[i] != deployment.FieldID {
+			if fields[i] != approval.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 			}
 		}
+		if _q.withDeployment != nil {
+			_spec.Node.AddColumnOnce(approval.FieldDeploymentID)
+		}
 		if _q.withService != nil {
-			_spec.Node.AddColumnOnce(deployment.FieldServiceID)
+			_spec.Node.AddColumnOnce(approval.FieldServiceID)
 		}
 		if _q.withEnvironment != nil {
-			_spec.Node.AddColumnOnce(deployment.FieldEnvironmentID)
-		}
-		if _q.withCluster != nil {
-			_spec.Node.AddColumnOnce(deployment.FieldClusterID)
+			_spec.Node.AddColumnOnce(approval.FieldEnvironmentID)
 		}
 		if _q.withOrganization != nil {
-			_spec.Node.AddColumnOnce(deployment.FieldOrgID)
+			_spec.Node.AddColumnOnce(approval.FieldOrgID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {
@@ -783,12 +708,12 @@ func (_q *DeploymentQuery) querySpec() *sqlgraph.QuerySpec {
 	return _spec
 }
 
-func (_q *DeploymentQuery) sqlQuery(ctx context.Context) *sql.Selector {
+func (_q *ApprovalQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	builder := sql.Dialect(_q.driver.Dialect())
-	t1 := builder.Table(deployment.Table)
+	t1 := builder.Table(approval.Table)
 	columns := _q.ctx.Fields
 	if len(columns) == 0 {
-		columns = deployment.Columns
+		columns = approval.Columns
 	}
 	selector := builder.Select(t1.Columns(columns...)...).From(t1)
 	if _q.sql != nil {
@@ -815,28 +740,28 @@ func (_q *DeploymentQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	return selector
 }
 
-// DeploymentGroupBy is the group-by builder for Deployment entities.
-type DeploymentGroupBy struct {
+// ApprovalGroupBy is the group-by builder for Approval entities.
+type ApprovalGroupBy struct {
 	selector
-	build *DeploymentQuery
+	build *ApprovalQuery
 }
 
 // Aggregate adds the given aggregation functions to the group-by query.
-func (_g *DeploymentGroupBy) Aggregate(fns ...AggregateFunc) *DeploymentGroupBy {
+func (_g *ApprovalGroupBy) Aggregate(fns ...AggregateFunc) *ApprovalGroupBy {
 	_g.fns = append(_g.fns, fns...)
 	return _g
 }
 
 // Scan applies the selector query and scans the result into the given value.
-func (_g *DeploymentGroupBy) Scan(ctx context.Context, v any) error {
+func (_g *ApprovalGroupBy) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _g.build.ctx, ent.OpQueryGroupBy)
 	if err := _g.build.prepareQuery(ctx); err != nil {
 		return err
 	}
-	return scanWithInterceptors[*DeploymentQuery, *DeploymentGroupBy](ctx, _g.build, _g, _g.build.inters, v)
+	return scanWithInterceptors[*ApprovalQuery, *ApprovalGroupBy](ctx, _g.build, _g, _g.build.inters, v)
 }
 
-func (_g *DeploymentGroupBy) sqlScan(ctx context.Context, root *DeploymentQuery, v any) error {
+func (_g *ApprovalGroupBy) sqlScan(ctx context.Context, root *ApprovalQuery, v any) error {
 	selector := root.sqlQuery(ctx).Select()
 	aggregation := make([]string, 0, len(_g.fns))
 	for _, fn := range _g.fns {
@@ -863,28 +788,28 @@ func (_g *DeploymentGroupBy) sqlScan(ctx context.Context, root *DeploymentQuery,
 	return sql.ScanSlice(rows, v)
 }
 
-// DeploymentSelect is the builder for selecting fields of Deployment entities.
-type DeploymentSelect struct {
-	*DeploymentQuery
+// ApprovalSelect is the builder for selecting fields of Approval entities.
+type ApprovalSelect struct {
+	*ApprovalQuery
 	selector
 }
 
 // Aggregate adds the given aggregation functions to the selector query.
-func (_s *DeploymentSelect) Aggregate(fns ...AggregateFunc) *DeploymentSelect {
+func (_s *ApprovalSelect) Aggregate(fns ...AggregateFunc) *ApprovalSelect {
 	_s.fns = append(_s.fns, fns...)
 	return _s
 }
 
 // Scan applies the selector query and scans the result into the given value.
-func (_s *DeploymentSelect) Scan(ctx context.Context, v any) error {
+func (_s *ApprovalSelect) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _s.ctx, ent.OpQuerySelect)
 	if err := _s.prepareQuery(ctx); err != nil {
 		return err
 	}
-	return scanWithInterceptors[*DeploymentQuery, *DeploymentSelect](ctx, _s.DeploymentQuery, _s, _s.inters, v)
+	return scanWithInterceptors[*ApprovalQuery, *ApprovalSelect](ctx, _s.ApprovalQuery, _s, _s.inters, v)
 }
 
-func (_s *DeploymentSelect) sqlScan(ctx context.Context, root *DeploymentQuery, v any) error {
+func (_s *ApprovalSelect) sqlScan(ctx context.Context, root *ApprovalQuery, v any) error {
 	selector := root.sqlQuery(ctx)
 	aggregation := make([]string, 0, len(_s.fns))
 	for _, fn := range _s.fns {

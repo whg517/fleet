@@ -59,6 +59,8 @@ type LookupStore interface {
 // Service defines the deployment management operations.
 type Service interface {
 	// Create creates a new deployment by creating an Argo CD Application and recording the Deployment.
+	// If the target environment requires approval, the deployment is saved as pending and no
+	// Argo CD Application is created until the approval is approved.
 	Create(ctx context.Context, req CreateDeploymentReq) (*Deployment, error)
 
 	// Get returns a deployment by ID.
@@ -72,4 +74,8 @@ type Service interface {
 
 	// Rollback rolls back to the previous healthy deployment version.
 	Rollback(ctx context.Context, id string) (*Deployment, error)
+
+	// TriggerDeployment creates the Argo CD Application for a deployment that was previously
+	// created in pending state (e.g. after approval). It transitions the deployment to deploying.
+	TriggerDeployment(ctx context.Context, id string) error
 }
