@@ -35,6 +35,7 @@ func (Organization) Edges() []ent.Edge {
 		edge.To("services", Service.Type),
 		edge.To("templates", Template.Type),
 		edge.To("deployments", Deployment.Type),
+		edge.To("config_snapshots", ConfigSnapshot.Type),
 	}
 }
 

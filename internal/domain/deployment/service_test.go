@@ -46,16 +46,23 @@ type mockArgoCD struct {
 	syncErr     error
 	rollbackErr error
 	deleteErr   error
+	updateErr   error
 
 	createCalls   []ArgoCDAppReq
 	syncCalls     []string
 	rollbackCalls []rollbackCall
 	deleteCalls   []string
+	updateCalls   []updateCall
 }
 
 type rollbackCall struct {
 	name     string
 	revision string
+}
+
+type updateCall struct {
+	name   string
+	values map[string]any
 }
 
 func (m *mockArgoCD) CreateApplication(_ context.Context, req ArgoCDAppReq) error {
@@ -86,6 +93,11 @@ func (m *mockArgoCD) RollbackApplication(_ context.Context, name, revision strin
 func (m *mockArgoCD) DeleteApplication(_ context.Context, name string) error {
 	m.deleteCalls = append(m.deleteCalls, name)
 	return m.deleteErr
+}
+
+func (m *mockArgoCD) UpdateApplication(_ context.Context, name string, values map[string]any) error {
+	m.updateCalls = append(m.updateCalls, updateCall{name: name, values: values})
+	return m.updateErr
 }
 
 // newTestService creates a test deployment service with SQLite in-memory DB.

@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
+	"github.com/whg517/fleet/internal/store/ent/configsnapshot"
 	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/environment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
@@ -196,6 +197,21 @@ func (_u *EnvironmentUpdate) AddDeployments(v ...*Deployment) *EnvironmentUpdate
 	return _u.AddDeploymentIDs(ids...)
 }
 
+// AddConfigSnapshotIDs adds the "config_snapshots" edge to the ConfigSnapshot entity by IDs.
+func (_u *EnvironmentUpdate) AddConfigSnapshotIDs(ids ...string) *EnvironmentUpdate {
+	_u.mutation.AddConfigSnapshotIDs(ids...)
+	return _u
+}
+
+// AddConfigSnapshots adds the "config_snapshots" edges to the ConfigSnapshot entity.
+func (_u *EnvironmentUpdate) AddConfigSnapshots(v ...*ConfigSnapshot) *EnvironmentUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddConfigSnapshotIDs(ids...)
+}
+
 // Mutation returns the EnvironmentMutation object of the builder.
 func (_u *EnvironmentUpdate) Mutation() *EnvironmentMutation {
 	return _u.mutation
@@ -232,6 +248,27 @@ func (_u *EnvironmentUpdate) RemoveDeployments(v ...*Deployment) *EnvironmentUpd
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveDeploymentIDs(ids...)
+}
+
+// ClearConfigSnapshots clears all "config_snapshots" edges to the ConfigSnapshot entity.
+func (_u *EnvironmentUpdate) ClearConfigSnapshots() *EnvironmentUpdate {
+	_u.mutation.ClearConfigSnapshots()
+	return _u
+}
+
+// RemoveConfigSnapshotIDs removes the "config_snapshots" edge to ConfigSnapshot entities by IDs.
+func (_u *EnvironmentUpdate) RemoveConfigSnapshotIDs(ids ...string) *EnvironmentUpdate {
+	_u.mutation.RemoveConfigSnapshotIDs(ids...)
+	return _u
+}
+
+// RemoveConfigSnapshots removes "config_snapshots" edges to ConfigSnapshot entities.
+func (_u *EnvironmentUpdate) RemoveConfigSnapshots(v ...*ConfigSnapshot) *EnvironmentUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveConfigSnapshotIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -415,6 +452,51 @@ func (_u *EnvironmentUpdate) sqlSave(ctx context.Context) (_node int, err error)
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(deployment.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ConfigSnapshotsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   environment.ConfigSnapshotsTable,
+			Columns: []string{environment.ConfigSnapshotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(configsnapshot.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedConfigSnapshotsIDs(); len(nodes) > 0 && !_u.mutation.ConfigSnapshotsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   environment.ConfigSnapshotsTable,
+			Columns: []string{environment.ConfigSnapshotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(configsnapshot.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ConfigSnapshotsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   environment.ConfigSnapshotsTable,
+			Columns: []string{environment.ConfigSnapshotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(configsnapshot.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {
@@ -607,6 +689,21 @@ func (_u *EnvironmentUpdateOne) AddDeployments(v ...*Deployment) *EnvironmentUpd
 	return _u.AddDeploymentIDs(ids...)
 }
 
+// AddConfigSnapshotIDs adds the "config_snapshots" edge to the ConfigSnapshot entity by IDs.
+func (_u *EnvironmentUpdateOne) AddConfigSnapshotIDs(ids ...string) *EnvironmentUpdateOne {
+	_u.mutation.AddConfigSnapshotIDs(ids...)
+	return _u
+}
+
+// AddConfigSnapshots adds the "config_snapshots" edges to the ConfigSnapshot entity.
+func (_u *EnvironmentUpdateOne) AddConfigSnapshots(v ...*ConfigSnapshot) *EnvironmentUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddConfigSnapshotIDs(ids...)
+}
+
 // Mutation returns the EnvironmentMutation object of the builder.
 func (_u *EnvironmentUpdateOne) Mutation() *EnvironmentMutation {
 	return _u.mutation
@@ -643,6 +740,27 @@ func (_u *EnvironmentUpdateOne) RemoveDeployments(v ...*Deployment) *Environment
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveDeploymentIDs(ids...)
+}
+
+// ClearConfigSnapshots clears all "config_snapshots" edges to the ConfigSnapshot entity.
+func (_u *EnvironmentUpdateOne) ClearConfigSnapshots() *EnvironmentUpdateOne {
+	_u.mutation.ClearConfigSnapshots()
+	return _u
+}
+
+// RemoveConfigSnapshotIDs removes the "config_snapshots" edge to ConfigSnapshot entities by IDs.
+func (_u *EnvironmentUpdateOne) RemoveConfigSnapshotIDs(ids ...string) *EnvironmentUpdateOne {
+	_u.mutation.RemoveConfigSnapshotIDs(ids...)
+	return _u
+}
+
+// RemoveConfigSnapshots removes "config_snapshots" edges to ConfigSnapshot entities.
+func (_u *EnvironmentUpdateOne) RemoveConfigSnapshots(v ...*ConfigSnapshot) *EnvironmentUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveConfigSnapshotIDs(ids...)
 }
 
 // Where appends a list predicates to the EnvironmentUpdate builder.
@@ -856,6 +974,51 @@ func (_u *EnvironmentUpdateOne) sqlSave(ctx context.Context) (_node *Environment
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(deployment.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ConfigSnapshotsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   environment.ConfigSnapshotsTable,
+			Columns: []string{environment.ConfigSnapshotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(configsnapshot.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedConfigSnapshotsIDs(); len(nodes) > 0 && !_u.mutation.ConfigSnapshotsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   environment.ConfigSnapshotsTable,
+			Columns: []string{environment.ConfigSnapshotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(configsnapshot.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ConfigSnapshotsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   environment.ConfigSnapshotsTable,
+			Columns: []string{environment.ConfigSnapshotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(configsnapshot.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

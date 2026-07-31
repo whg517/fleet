@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/whg517/fleet/internal/store/ent/configsnapshot"
 	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
 	"github.com/whg517/fleet/internal/store/ent/service"
@@ -186,6 +187,21 @@ func (_c *ServiceCreate) AddDeployments(v ...*Deployment) *ServiceCreate {
 	return _c.AddDeploymentIDs(ids...)
 }
 
+// AddConfigSnapshotIDs adds the "config_snapshots" edge to the ConfigSnapshot entity by IDs.
+func (_c *ServiceCreate) AddConfigSnapshotIDs(ids ...string) *ServiceCreate {
+	_c.mutation.AddConfigSnapshotIDs(ids...)
+	return _c
+}
+
+// AddConfigSnapshots adds the "config_snapshots" edges to the ConfigSnapshot entity.
+func (_c *ServiceCreate) AddConfigSnapshots(v ...*ConfigSnapshot) *ServiceCreate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddConfigSnapshotIDs(ids...)
+}
+
 // Mutation returns the ServiceMutation object of the builder.
 func (_c *ServiceCreate) Mutation() *ServiceMutation {
 	return _c.mutation
@@ -356,6 +372,22 @@ func (_c *ServiceCreate) createSpec() (*Service, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(deployment.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ConfigSnapshotsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   service.ConfigSnapshotsTable,
+			Columns: []string{service.ConfigSnapshotsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(configsnapshot.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

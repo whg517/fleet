@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/whg517/fleet/internal/store/ent/configsnapshot"
 	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
 	"github.com/whg517/fleet/internal/store/ent/predicate"
@@ -21,12 +22,13 @@ import (
 // ServiceQuery is the builder for querying Service entities.
 type ServiceQuery struct {
 	config
-	ctx              *QueryContext
-	order            []service.OrderOption
-	inters           []Interceptor
-	predicates       []predicate.Service
-	withOrganization *OrganizationQuery
-	withDeployments  *DeploymentQuery
+	ctx                 *QueryContext
+	order               []service.OrderOption
+	inters              []Interceptor
+	predicates          []predicate.Service
+	withOrganization    *OrganizationQuery
+	withDeployments     *DeploymentQuery
+	withConfigSnapshots *ConfigSnapshotQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -100,6 +102,28 @@ func (_q *ServiceQuery) QueryDeployments() *DeploymentQuery {
 			sqlgraph.From(service.Table, service.FieldID, selector),
 			sqlgraph.To(deployment.Table, deployment.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, service.DeploymentsTable, service.DeploymentsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryConfigSnapshots chains the current query on the "config_snapshots" edge.
+func (_q *ServiceQuery) QueryConfigSnapshots() *ConfigSnapshotQuery {
+	query := (&ConfigSnapshotClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(service.Table, service.FieldID, selector),
+			sqlgraph.To(configsnapshot.Table, configsnapshot.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, service.ConfigSnapshotsTable, service.ConfigSnapshotsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -294,13 +318,14 @@ func (_q *ServiceQuery) Clone() *ServiceQuery {
 		return nil
 	}
 	return &ServiceQuery{
-		config:           _q.config,
-		ctx:              _q.ctx.Clone(),
-		order:            append([]service.OrderOption{}, _q.order...),
-		inters:           append([]Interceptor{}, _q.inters...),
-		predicates:       append([]predicate.Service{}, _q.predicates...),
-		withOrganization: _q.withOrganization.Clone(),
-		withDeployments:  _q.withDeployments.Clone(),
+		config:              _q.config,
+		ctx:                 _q.ctx.Clone(),
+		order:               append([]service.OrderOption{}, _q.order...),
+		inters:              append([]Interceptor{}, _q.inters...),
+		predicates:          append([]predicate.Service{}, _q.predicates...),
+		withOrganization:    _q.withOrganization.Clone(),
+		withDeployments:     _q.withDeployments.Clone(),
+		withConfigSnapshots: _q.withConfigSnapshots.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -326,6 +351,17 @@ func (_q *ServiceQuery) WithDeployments(opts ...func(*DeploymentQuery)) *Service
 		opt(query)
 	}
 	_q.withDeployments = query
+	return _q
+}
+
+// WithConfigSnapshots tells the query-builder to eager-load the nodes that are connected to
+// the "config_snapshots" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ServiceQuery) WithConfigSnapshots(opts ...func(*ConfigSnapshotQuery)) *ServiceQuery {
+	query := (&ConfigSnapshotClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withConfigSnapshots = query
 	return _q
 }
 
@@ -407,9 +443,10 @@ func (_q *ServiceQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Serv
 	var (
 		nodes       = []*Service{}
 		_spec       = _q.querySpec()
-		loadedTypes = [2]bool{
+		loadedTypes = [3]bool{
 			_q.withOrganization != nil,
 			_q.withDeployments != nil,
+			_q.withConfigSnapshots != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -440,6 +477,13 @@ func (_q *ServiceQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Serv
 		if err := _q.loadDeployments(ctx, query, nodes,
 			func(n *Service) { n.Edges.Deployments = []*Deployment{} },
 			func(n *Service, e *Deployment) { n.Edges.Deployments = append(n.Edges.Deployments, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withConfigSnapshots; query != nil {
+		if err := _q.loadConfigSnapshots(ctx, query, nodes,
+			func(n *Service) { n.Edges.ConfigSnapshots = []*ConfigSnapshot{} },
+			func(n *Service, e *ConfigSnapshot) { n.Edges.ConfigSnapshots = append(n.Edges.ConfigSnapshots, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -490,6 +534,36 @@ func (_q *ServiceQuery) loadDeployments(ctx context.Context, query *DeploymentQu
 	}
 	query.Where(predicate.Deployment(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(service.DeploymentsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.ServiceID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "service_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *ServiceQuery) loadConfigSnapshots(ctx context.Context, query *ConfigSnapshotQuery, nodes []*Service, init func(*Service), assign func(*Service, *ConfigSnapshot)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*Service)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(configsnapshot.FieldServiceID)
+	}
+	query.Where(predicate.ConfigSnapshot(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(service.ConfigSnapshotsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

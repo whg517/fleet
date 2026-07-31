@@ -7,6 +7,7 @@ import (
 
 	"github.com/whg517/fleet/internal/store/ent/auditlog"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
+	"github.com/whg517/fleet/internal/store/ent/configsnapshot"
 	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/environment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
@@ -57,6 +58,20 @@ func init() {
 	cluster.DefaultUpdatedAt = clusterDescUpdatedAt.Default.(func() time.Time)
 	// cluster.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	cluster.UpdateDefaultUpdatedAt = clusterDescUpdatedAt.UpdateDefault.(func() time.Time)
+	configsnapshotFields := schema.ConfigSnapshot{}.Fields()
+	_ = configsnapshotFields
+	// configsnapshotDescServiceID is the schema descriptor for service_id field.
+	configsnapshotDescServiceID := configsnapshotFields[2].Descriptor()
+	// configsnapshot.ServiceIDValidator is a validator for the "service_id" field. It is called by the builders before save.
+	configsnapshot.ServiceIDValidator = configsnapshotDescServiceID.Validators[0].(func(string) error)
+	// configsnapshotDescEnvironmentID is the schema descriptor for environment_id field.
+	configsnapshotDescEnvironmentID := configsnapshotFields[3].Descriptor()
+	// configsnapshot.EnvironmentIDValidator is a validator for the "environment_id" field. It is called by the builders before save.
+	configsnapshot.EnvironmentIDValidator = configsnapshotDescEnvironmentID.Validators[0].(func(string) error)
+	// configsnapshotDescCreatedAt is the schema descriptor for created_at field.
+	configsnapshotDescCreatedAt := configsnapshotFields[8].Descriptor()
+	// configsnapshot.DefaultCreatedAt holds the default value on creation for the created_at field.
+	configsnapshot.DefaultCreatedAt = configsnapshotDescCreatedAt.Default.(func() time.Time)
 	deploymentFields := schema.Deployment{}.Fields()
 	_ = deploymentFields
 	// deploymentDescServiceID is the schema descriptor for service_id field.

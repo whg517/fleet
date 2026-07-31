@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
+	"github.com/whg517/fleet/internal/store/ent/configsnapshot"
 	"github.com/whg517/fleet/internal/store/ent/deployment"
 	"github.com/whg517/fleet/internal/store/ent/environment"
 	"github.com/whg517/fleet/internal/store/ent/organization"
@@ -26,17 +27,18 @@ import (
 // OrganizationQuery is the builder for querying Organization entities.
 type OrganizationQuery struct {
 	config
-	ctx              *QueryContext
-	order            []organization.OrderOption
-	inters           []Interceptor
-	predicates       []predicate.Organization
-	withUsers        *UserQuery
-	withClusters     *ClusterQuery
-	withEnvironments *EnvironmentQuery
-	withRegistries   *RegistryQuery
-	withServices     *ServiceQuery
-	withTemplates    *TemplateQuery
-	withDeployments  *DeploymentQuery
+	ctx                 *QueryContext
+	order               []organization.OrderOption
+	inters              []Interceptor
+	predicates          []predicate.Organization
+	withUsers           *UserQuery
+	withClusters        *ClusterQuery
+	withEnvironments    *EnvironmentQuery
+	withRegistries      *RegistryQuery
+	withServices        *ServiceQuery
+	withTemplates       *TemplateQuery
+	withDeployments     *DeploymentQuery
+	withConfigSnapshots *ConfigSnapshotQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -220,6 +222,28 @@ func (_q *OrganizationQuery) QueryDeployments() *DeploymentQuery {
 			sqlgraph.From(organization.Table, organization.FieldID, selector),
 			sqlgraph.To(deployment.Table, deployment.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, organization.DeploymentsTable, organization.DeploymentsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryConfigSnapshots chains the current query on the "config_snapshots" edge.
+func (_q *OrganizationQuery) QueryConfigSnapshots() *ConfigSnapshotQuery {
+	query := (&ConfigSnapshotClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(organization.Table, organization.FieldID, selector),
+			sqlgraph.To(configsnapshot.Table, configsnapshot.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, organization.ConfigSnapshotsTable, organization.ConfigSnapshotsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -414,18 +438,19 @@ func (_q *OrganizationQuery) Clone() *OrganizationQuery {
 		return nil
 	}
 	return &OrganizationQuery{
-		config:           _q.config,
-		ctx:              _q.ctx.Clone(),
-		order:            append([]organization.OrderOption{}, _q.order...),
-		inters:           append([]Interceptor{}, _q.inters...),
-		predicates:       append([]predicate.Organization{}, _q.predicates...),
-		withUsers:        _q.withUsers.Clone(),
-		withClusters:     _q.withClusters.Clone(),
-		withEnvironments: _q.withEnvironments.Clone(),
-		withRegistries:   _q.withRegistries.Clone(),
-		withServices:     _q.withServices.Clone(),
-		withTemplates:    _q.withTemplates.Clone(),
-		withDeployments:  _q.withDeployments.Clone(),
+		config:              _q.config,
+		ctx:                 _q.ctx.Clone(),
+		order:               append([]organization.OrderOption{}, _q.order...),
+		inters:              append([]Interceptor{}, _q.inters...),
+		predicates:          append([]predicate.Organization{}, _q.predicates...),
+		withUsers:           _q.withUsers.Clone(),
+		withClusters:        _q.withClusters.Clone(),
+		withEnvironments:    _q.withEnvironments.Clone(),
+		withRegistries:      _q.withRegistries.Clone(),
+		withServices:        _q.withServices.Clone(),
+		withTemplates:       _q.withTemplates.Clone(),
+		withDeployments:     _q.withDeployments.Clone(),
+		withConfigSnapshots: _q.withConfigSnapshots.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -509,6 +534,17 @@ func (_q *OrganizationQuery) WithDeployments(opts ...func(*DeploymentQuery)) *Or
 	return _q
 }
 
+// WithConfigSnapshots tells the query-builder to eager-load the nodes that are connected to
+// the "config_snapshots" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *OrganizationQuery) WithConfigSnapshots(opts ...func(*ConfigSnapshotQuery)) *OrganizationQuery {
+	query := (&ConfigSnapshotClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withConfigSnapshots = query
+	return _q
+}
+
 // GroupBy is used to group vertices by one or more fields/columns.
 // It is often used with aggregate functions, like: count, max, mean, min, sum.
 //
@@ -587,7 +623,7 @@ func (_q *OrganizationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 	var (
 		nodes       = []*Organization{}
 		_spec       = _q.querySpec()
-		loadedTypes = [7]bool{
+		loadedTypes = [8]bool{
 			_q.withUsers != nil,
 			_q.withClusters != nil,
 			_q.withEnvironments != nil,
@@ -595,6 +631,7 @@ func (_q *OrganizationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 			_q.withServices != nil,
 			_q.withTemplates != nil,
 			_q.withDeployments != nil,
+			_q.withConfigSnapshots != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -661,6 +698,13 @@ func (_q *OrganizationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 		if err := _q.loadDeployments(ctx, query, nodes,
 			func(n *Organization) { n.Edges.Deployments = []*Deployment{} },
 			func(n *Organization, e *Deployment) { n.Edges.Deployments = append(n.Edges.Deployments, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withConfigSnapshots; query != nil {
+		if err := _q.loadConfigSnapshots(ctx, query, nodes,
+			func(n *Organization) { n.Edges.ConfigSnapshots = []*ConfigSnapshot{} },
+			func(n *Organization, e *ConfigSnapshot) { n.Edges.ConfigSnapshots = append(n.Edges.ConfigSnapshots, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -862,6 +906,36 @@ func (_q *OrganizationQuery) loadDeployments(ctx context.Context, query *Deploym
 	}
 	query.Where(predicate.Deployment(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(organization.DeploymentsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.OrgID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "org_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *OrganizationQuery) loadConfigSnapshots(ctx context.Context, query *ConfigSnapshotQuery, nodes []*Organization, init func(*Organization), assign func(*Organization, *ConfigSnapshot)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*Organization)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(configsnapshot.FieldOrgID)
+	}
+	query.Where(predicate.ConfigSnapshot(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(organization.ConfigSnapshotsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

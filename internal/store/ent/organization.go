@@ -51,9 +51,11 @@ type OrganizationEdges struct {
 	Templates []*Template `json:"templates,omitempty"`
 	// Deployments holds the value of the deployments edge.
 	Deployments []*Deployment `json:"deployments,omitempty"`
+	// ConfigSnapshots holds the value of the config_snapshots edge.
+	ConfigSnapshots []*ConfigSnapshot `json:"config_snapshots,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [7]bool
+	loadedTypes [8]bool
 }
 
 // UsersOrErr returns the Users value or an error if the edge
@@ -117,6 +119,15 @@ func (e OrganizationEdges) DeploymentsOrErr() ([]*Deployment, error) {
 		return e.Deployments, nil
 	}
 	return nil, &NotLoadedError{edge: "deployments"}
+}
+
+// ConfigSnapshotsOrErr returns the ConfigSnapshots value or an error if the edge
+// was not loaded in eager-loading.
+func (e OrganizationEdges) ConfigSnapshotsOrErr() ([]*ConfigSnapshot, error) {
+	if e.loadedTypes[7] {
+		return e.ConfigSnapshots, nil
+	}
+	return nil, &NotLoadedError{edge: "config_snapshots"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -231,6 +242,11 @@ func (_m *Organization) QueryTemplates() *TemplateQuery {
 // QueryDeployments queries the "deployments" edge of the Organization entity.
 func (_m *Organization) QueryDeployments() *DeploymentQuery {
 	return NewOrganizationClient(_m.config).QueryDeployments(_m)
+}
+
+// QueryConfigSnapshots queries the "config_snapshots" edge of the Organization entity.
+func (_m *Organization) QueryConfigSnapshots() *ConfigSnapshotQuery {
+	return NewOrganizationClient(_m.config).QueryConfigSnapshots(_m)
 }
 
 // Update returns a builder for updating this Organization.

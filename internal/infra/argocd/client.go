@@ -13,6 +13,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const defaultHTTPTimeout = 30 * time.Second
+
 // Client implements the Argo CD REST API client.
 // It communicates with Argo CD via HTTP, not gRPC.
 type Client struct {
@@ -32,7 +34,7 @@ func NewClient(baseURL, token string, logger *zap.Logger) (*Client, error) {
 		baseURL: baseURL,
 		token:   token,
 		http: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: defaultHTTPTimeout,
 		},
 		logger: logger,
 	}, nil
@@ -114,7 +116,7 @@ func (c *Client) CreateApplication(ctx context.Context, name, namespace, repoURL
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("argocd create application failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("argocd create application failed: status=%d body=%s", resp.StatusCode, truncateBody(respBody))
 	}
 
 	c.logger.Info("argocd application created", zap.String("name", name))
@@ -143,7 +145,7 @@ func (c *Client) GetApplication(ctx context.Context, name string) (*AppStatus, e
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("argocd get application failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("argocd get application failed: status=%d body=%s", resp.StatusCode, truncateBody(respBody))
 	}
 
 	var result struct {
@@ -188,7 +190,7 @@ func (c *Client) SyncApplication(ctx context.Context, name string) error {
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("argocd sync application failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("argocd sync application failed: status=%d body=%s", resp.StatusCode, truncateBody(respBody))
 	}
 
 	c.logger.Info("argocd application synced", zap.String("name", name))
@@ -219,7 +221,7 @@ func (c *Client) RollbackApplication(ctx context.Context, name, revision string)
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("argocd rollback application failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("argocd rollback application failed: status=%d body=%s", resp.StatusCode, truncateBody(respBody))
 	}
 
 	c.logger.Info("argocd application rollback initiated", zap.String("name", name), zap.String("revision", revision))
@@ -242,11 +244,87 @@ func (c *Client) DeleteApplication(ctx context.Context, name string) error {
 
 	if resp.StatusCode >= 400 && resp.StatusCode != http.StatusNotFound {
 		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("argocd delete application failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("argocd delete application failed: status=%d body=%s", resp.StatusCode, truncateBody(respBody))
 	}
 
 	c.logger.Info("argocd application deleted", zap.String("name", name))
 	return nil
+}
+
+// UpdateApplication updates an Argo CD Application's Helm values via the REST API.
+// It first GETs the existing application spec to avoid overwriting other fields,
+// then modifies only source.helm.values and PUTs the full spec back.
+func (c *Client) UpdateApplication(ctx context.Context, name string, values map[string]any) error {
+	// 1. GET existing application to preserve the full spec
+	getReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/applications/"+url.PathEscape(name), nil)
+	if err != nil {
+		return fmt.Errorf("create get request: %w", err)
+	}
+	c.setHeaders(getReq)
+
+	getResp, err := c.http.Do(getReq)
+	if err != nil {
+		return fmt.Errorf("send get request: %w", err)
+	}
+
+	if getResp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(getResp.Body)
+		_ = getResp.Body.Close()
+		return fmt.Errorf("argocd get application for update failed: status=%d body=%s", getResp.StatusCode, truncateBody(respBody))
+	}
+
+	var existing struct {
+		Application argocdAppSpec `json:"application"`
+	}
+	if err := json.NewDecoder(getResp.Body).Decode(&existing); err != nil {
+		_ = getResp.Body.Close()
+		return fmt.Errorf("decode existing application: %w", err)
+	}
+	_ = getResp.Body.Close()
+
+	// 2. Modify only the helm values in the existing spec
+	if values != nil {
+		existing.Application.Spec.Source.Helm = &helmConfig{Values: values}
+	} else {
+		existing.Application.Spec.Source.Helm = nil
+	}
+
+	// 3. PUT the full spec back
+	body, err := json.Marshal(struct {
+		Application argocdAppSpec `json:"application"`
+	}{Application: existing.Application})
+	if err != nil {
+		return fmt.Errorf("marshal application update spec: %w", err)
+	}
+
+	putReq, err := http.NewRequestWithContext(ctx, http.MethodPut, c.baseURL+"/api/v1/applications/"+url.PathEscape(name), bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create put request: %w", err)
+	}
+	c.setHeaders(putReq)
+
+	putResp, err := c.http.Do(putReq)
+	if err != nil {
+		return fmt.Errorf("send put request: %w", err)
+	}
+	defer func() { _ = putResp.Body.Close() }()
+
+	if putResp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(putResp.Body)
+		return fmt.Errorf("argocd update application failed: status=%d body=%s", putResp.StatusCode, truncateBody(respBody))
+	}
+
+	c.logger.Info("argocd application updated", zap.String("name", name))
+	return nil
+}
+
+// truncateBody truncates an HTTP response body to at most 200 characters for safe inclusion in error messages.
+func truncateBody(b []byte) string {
+	const maxLen = 200
+	if len(b) <= maxLen {
+		return string(b)
+	}
+	return string(b[:maxLen]) + "... (truncated)"
 }
 
 func (c *Client) setHeaders(req *http.Request) {

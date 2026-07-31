@@ -33,6 +33,18 @@ func (f ClusterFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ClusterMutation", m)
 }
 
+// The ConfigSnapshotFunc type is an adapter to allow the use of ordinary
+// function as ConfigSnapshot mutator.
+type ConfigSnapshotFunc func(context.Context, *ent.ConfigSnapshotMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ConfigSnapshotFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ConfigSnapshotMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConfigSnapshotMutation", m)
+}
+
 // The DeploymentFunc type is an adapter to allow the use of ordinary
 // function as Deployment mutator.
 type DeploymentFunc func(context.Context, *ent.DeploymentMutation) (ent.Value, error)
