@@ -15,6 +15,7 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/whg517/fleet/internal/store/ent/approval"
 	"github.com/whg517/fleet/internal/store/ent/auditlog"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
 	"github.com/whg517/fleet/internal/store/ent/configsnapshot"
@@ -35,6 +36,8 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// Approval is the client for interacting with the Approval builders.
+	Approval *ApprovalClient
 	// AuditLog is the client for interacting with the AuditLog builders.
 	AuditLog *AuditLogClient
 	// Cluster is the client for interacting with the Cluster builders.
@@ -72,6 +75,7 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.Approval = NewApprovalClient(c.config)
 	c.AuditLog = NewAuditLogClient(c.config)
 	c.Cluster = NewClusterClient(c.config)
 	c.ConfigSnapshot = NewConfigSnapshotClient(c.config)
@@ -177,6 +181,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	return &Tx{
 		ctx:             ctx,
 		config:          cfg,
+		Approval:        NewApprovalClient(cfg),
 		AuditLog:        NewAuditLogClient(cfg),
 		Cluster:         NewClusterClient(cfg),
 		ConfigSnapshot:  NewConfigSnapshotClient(cfg),
@@ -209,6 +214,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	return &Tx{
 		ctx:             ctx,
 		config:          cfg,
+		Approval:        NewApprovalClient(cfg),
 		AuditLog:        NewAuditLogClient(cfg),
 		Cluster:         NewClusterClient(cfg),
 		ConfigSnapshot:  NewConfigSnapshotClient(cfg),
@@ -228,7 +234,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		AuditLog.
+//		Approval.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -251,9 +257,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AuditLog, c.Cluster, c.ConfigSnapshot, c.Deployment, c.Environment,
-		c.Organization, c.Registry, c.Role, c.Service, c.SystemSetting, c.Template,
-		c.TemplateVersion, c.User,
+		c.Approval, c.AuditLog, c.Cluster, c.ConfigSnapshot, c.Deployment,
+		c.Environment, c.Organization, c.Registry, c.Role, c.Service, c.SystemSetting,
+		c.Template, c.TemplateVersion, c.User,
 	} {
 		n.Use(hooks...)
 	}
@@ -263,9 +269,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AuditLog, c.Cluster, c.ConfigSnapshot, c.Deployment, c.Environment,
-		c.Organization, c.Registry, c.Role, c.Service, c.SystemSetting, c.Template,
-		c.TemplateVersion, c.User,
+		c.Approval, c.AuditLog, c.Cluster, c.ConfigSnapshot, c.Deployment,
+		c.Environment, c.Organization, c.Registry, c.Role, c.Service, c.SystemSetting,
+		c.Template, c.TemplateVersion, c.User,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -274,6 +280,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *ApprovalMutation:
+		return c.Approval.mutate(ctx, m)
 	case *AuditLogMutation:
 		return c.AuditLog.mutate(ctx, m)
 	case *ClusterMutation:
@@ -302,6 +310,203 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.User.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// ApprovalClient is a client for the Approval schema.
+type ApprovalClient struct {
+	config
+}
+
+// NewApprovalClient returns a client for the Approval from the given config.
+func NewApprovalClient(c config) *ApprovalClient {
+	return &ApprovalClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `approval.Hooks(f(g(h())))`.
+func (c *ApprovalClient) Use(hooks ...Hook) {
+	c.hooks.Approval = append(c.hooks.Approval, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `approval.Intercept(f(g(h())))`.
+func (c *ApprovalClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Approval = append(c.inters.Approval, interceptors...)
+}
+
+// Create returns a builder for creating a Approval entity.
+func (c *ApprovalClient) Create() *ApprovalCreate {
+	mutation := newApprovalMutation(c.config, OpCreate)
+	return &ApprovalCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Approval entities.
+func (c *ApprovalClient) CreateBulk(builders ...*ApprovalCreate) *ApprovalCreateBulk {
+	return &ApprovalCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ApprovalClient) MapCreateBulk(slice any, setFunc func(*ApprovalCreate, int)) *ApprovalCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ApprovalCreateBulk{err: fmt.Errorf("calling to ApprovalClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ApprovalCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ApprovalCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Approval.
+func (c *ApprovalClient) Update() *ApprovalUpdate {
+	mutation := newApprovalMutation(c.config, OpUpdate)
+	return &ApprovalUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ApprovalClient) UpdateOne(_m *Approval) *ApprovalUpdateOne {
+	mutation := newApprovalMutation(c.config, OpUpdateOne, withApproval(_m))
+	return &ApprovalUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ApprovalClient) UpdateOneID(id string) *ApprovalUpdateOne {
+	mutation := newApprovalMutation(c.config, OpUpdateOne, withApprovalID(id))
+	return &ApprovalUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Approval.
+func (c *ApprovalClient) Delete() *ApprovalDelete {
+	mutation := newApprovalMutation(c.config, OpDelete)
+	return &ApprovalDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ApprovalClient) DeleteOne(_m *Approval) *ApprovalDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ApprovalClient) DeleteOneID(id string) *ApprovalDeleteOne {
+	builder := c.Delete().Where(approval.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ApprovalDeleteOne{builder}
+}
+
+// Query returns a query builder for Approval.
+func (c *ApprovalClient) Query() *ApprovalQuery {
+	return &ApprovalQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeApproval},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Approval entity by its id.
+func (c *ApprovalClient) Get(ctx context.Context, id string) (*Approval, error) {
+	return c.Query().Where(approval.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ApprovalClient) GetX(ctx context.Context, id string) *Approval {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryDeployment queries the deployment edge of a Approval.
+func (c *ApprovalClient) QueryDeployment(_m *Approval) *DeploymentQuery {
+	query := (&DeploymentClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(approval.Table, approval.FieldID, id),
+			sqlgraph.To(deployment.Table, deployment.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, approval.DeploymentTable, approval.DeploymentColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryService queries the service edge of a Approval.
+func (c *ApprovalClient) QueryService(_m *Approval) *ServiceQuery {
+	query := (&ServiceClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(approval.Table, approval.FieldID, id),
+			sqlgraph.To(service.Table, service.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, approval.ServiceTable, approval.ServiceColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryEnvironment queries the environment edge of a Approval.
+func (c *ApprovalClient) QueryEnvironment(_m *Approval) *EnvironmentQuery {
+	query := (&EnvironmentClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(approval.Table, approval.FieldID, id),
+			sqlgraph.To(environment.Table, environment.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, approval.EnvironmentTable, approval.EnvironmentColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryOrganization queries the organization edge of a Approval.
+func (c *ApprovalClient) QueryOrganization(_m *Approval) *OrganizationQuery {
+	query := (&OrganizationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(approval.Table, approval.FieldID, id),
+			sqlgraph.To(organization.Table, organization.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, approval.OrganizationTable, approval.OrganizationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ApprovalClient) Hooks() []Hook {
+	return c.hooks.Approval
+}
+
+// Interceptors returns the client interceptors.
+func (c *ApprovalClient) Interceptors() []Interceptor {
+	return c.inters.Approval
+}
+
+func (c *ApprovalClient) mutate(ctx context.Context, m *ApprovalMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ApprovalCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ApprovalUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ApprovalUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ApprovalDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Approval mutation op: %q", m.Op())
 	}
 }
 
@@ -972,6 +1177,22 @@ func (c *DeploymentClient) QueryOrganization(_m *Deployment) *OrganizationQuery 
 	return query
 }
 
+// QueryApprovals queries the approvals edge of a Deployment.
+func (c *DeploymentClient) QueryApprovals(_m *Deployment) *ApprovalQuery {
+	query := (&ApprovalClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(deployment.Table, deployment.FieldID, id),
+			sqlgraph.To(approval.Table, approval.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, deployment.ApprovalsTable, deployment.ApprovalsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *DeploymentClient) Hooks() []Hook {
 	return c.hooks.Deployment
@@ -1162,6 +1383,22 @@ func (c *EnvironmentClient) QueryConfigSnapshots(_m *Environment) *ConfigSnapsho
 			sqlgraph.From(environment.Table, environment.FieldID, id),
 			sqlgraph.To(configsnapshot.Table, configsnapshot.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, environment.ConfigSnapshotsTable, environment.ConfigSnapshotsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryApprovals queries the approvals edge of a Environment.
+func (c *EnvironmentClient) QueryApprovals(_m *Environment) *ApprovalQuery {
+	query := (&ApprovalClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(environment.Table, environment.FieldID, id),
+			sqlgraph.To(approval.Table, approval.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, environment.ApprovalsTable, environment.ApprovalsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -1423,6 +1660,22 @@ func (c *OrganizationClient) QueryConfigSnapshots(_m *Organization) *ConfigSnaps
 			sqlgraph.From(organization.Table, organization.FieldID, id),
 			sqlgraph.To(configsnapshot.Table, configsnapshot.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, organization.ConfigSnapshotsTable, organization.ConfigSnapshotsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryApprovals queries the approvals edge of a Organization.
+func (c *OrganizationClient) QueryApprovals(_m *Organization) *ApprovalQuery {
+	query := (&ApprovalClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(organization.Table, organization.FieldID, id),
+			sqlgraph.To(approval.Table, approval.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, organization.ApprovalsTable, organization.ApprovalsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -1886,6 +2139,22 @@ func (c *ServiceClient) QueryConfigSnapshots(_m *Service) *ConfigSnapshotQuery {
 			sqlgraph.From(service.Table, service.FieldID, id),
 			sqlgraph.To(configsnapshot.Table, configsnapshot.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, service.ConfigSnapshotsTable, service.ConfigSnapshotsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryApprovals queries the approvals edge of a Service.
+func (c *ServiceClient) QueryApprovals(_m *Service) *ApprovalQuery {
+	query := (&ApprovalClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(service.Table, service.FieldID, id),
+			sqlgraph.To(approval.Table, approval.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, service.ApprovalsTable, service.ApprovalsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -2517,13 +2786,13 @@ func (c *UserClient) mutate(ctx context.Context, m *UserMutation) (Value, error)
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AuditLog, Cluster, ConfigSnapshot, Deployment, Environment, Organization,
-		Registry, Role, Service, SystemSetting, Template, TemplateVersion,
-		User []ent.Hook
+		Approval, AuditLog, Cluster, ConfigSnapshot, Deployment, Environment,
+		Organization, Registry, Role, Service, SystemSetting, Template,
+		TemplateVersion, User []ent.Hook
 	}
 	inters struct {
-		AuditLog, Cluster, ConfigSnapshot, Deployment, Environment, Organization,
-		Registry, Role, Service, SystemSetting, Template, TemplateVersion,
-		User []ent.Interceptor
+		Approval, AuditLog, Cluster, ConfigSnapshot, Deployment, Environment,
+		Organization, Registry, Role, Service, SystemSetting, Template,
+		TemplateVersion, User []ent.Interceptor
 	}
 )

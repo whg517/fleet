@@ -5,6 +5,7 @@ package ent
 import (
 	"time"
 
+	"github.com/whg517/fleet/internal/store/ent/approval"
 	"github.com/whg517/fleet/internal/store/ent/auditlog"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
 	"github.com/whg517/fleet/internal/store/ent/configsnapshot"
@@ -24,6 +25,34 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	approvalFields := schema.Approval{}.Fields()
+	_ = approvalFields
+	// approvalDescDeploymentID is the schema descriptor for deployment_id field.
+	approvalDescDeploymentID := approvalFields[2].Descriptor()
+	// approval.DeploymentIDValidator is a validator for the "deployment_id" field. It is called by the builders before save.
+	approval.DeploymentIDValidator = approvalDescDeploymentID.Validators[0].(func(string) error)
+	// approvalDescServiceID is the schema descriptor for service_id field.
+	approvalDescServiceID := approvalFields[3].Descriptor()
+	// approval.ServiceIDValidator is a validator for the "service_id" field. It is called by the builders before save.
+	approval.ServiceIDValidator = approvalDescServiceID.Validators[0].(func(string) error)
+	// approvalDescEnvironmentID is the schema descriptor for environment_id field.
+	approvalDescEnvironmentID := approvalFields[4].Descriptor()
+	// approval.EnvironmentIDValidator is a validator for the "environment_id" field. It is called by the builders before save.
+	approval.EnvironmentIDValidator = approvalDescEnvironmentID.Validators[0].(func(string) error)
+	// approvalDescRequesterID is the schema descriptor for requester_id field.
+	approvalDescRequesterID := approvalFields[5].Descriptor()
+	// approval.RequesterIDValidator is a validator for the "requester_id" field. It is called by the builders before save.
+	approval.RequesterIDValidator = approvalDescRequesterID.Validators[0].(func(string) error)
+	// approvalDescCreatedAt is the schema descriptor for created_at field.
+	approvalDescCreatedAt := approvalFields[11].Descriptor()
+	// approval.DefaultCreatedAt holds the default value on creation for the created_at field.
+	approval.DefaultCreatedAt = approvalDescCreatedAt.Default.(func() time.Time)
+	// approvalDescUpdatedAt is the schema descriptor for updated_at field.
+	approvalDescUpdatedAt := approvalFields[12].Descriptor()
+	// approval.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	approval.DefaultUpdatedAt = approvalDescUpdatedAt.Default.(func() time.Time)
+	// approval.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	approval.UpdateDefaultUpdatedAt = approvalDescUpdatedAt.UpdateDefault.(func() time.Time)
 	auditlogFields := schema.AuditLog{}.Fields()
 	_ = auditlogFields
 	// auditlogDescAction is the schema descriptor for action field.

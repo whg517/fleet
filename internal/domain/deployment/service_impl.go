@@ -201,6 +201,53 @@ func (s *ServiceImpl) Create(ctx context.Context, req CreateDeploymentReq) (*Dep
 		return nil, fmt.Errorf("lookup environment: %w", err)
 	}
 
+	// If the environment requires approval, create the deployment as pending
+	// without creating an Argo CD Application. The actual deployment will be
+	// triggered after the approval is approved via TriggerDeployment.
+	if env.ApprovalRequired {
+		deploymentID := uuid.NewString()
+
+		builder := s.store.NewDeploymentCreate().
+			SetID(deploymentID).
+			SetServiceID(req.ServiceID).
+			SetEnvironmentID(req.EnvironmentID).
+			SetClusterID(env.ClusterID).
+			SetTemplateVersionID(req.TemplateVersionID).
+			SetVersion(req.Version).
+			SetStatus(entdeployment.StatusPending)
+
+		if req.OrgID != "" {
+			builder.SetOrgID(req.OrgID)
+		}
+		if req.ValuesOverride != nil {
+			builder.SetValuesOverride(req.ValuesOverride)
+		}
+		if req.CreatedBy != "" {
+			builder.SetCreatedBy(req.CreatedBy)
+		}
+
+		d, err := s.store.SaveDeployment(ctx, builder)
+		if err != nil {
+			if ent.IsConstraintError(err) {
+				errMsg := err.Error()
+				if strings.Contains(errMsg, "FOREIGN KEY constraint failed") {
+					return nil, fmt.Errorf("%w: referenced entity not found", ErrInvalidInput)
+				}
+				return nil, ErrDeploymentAlreadyExists
+			}
+			return nil, fmt.Errorf("create deployment: %w", err)
+		}
+
+		s.logger.Info("deployment created (pending approval)",
+			zap.String("id", d.ID),
+			zap.String("service_id", req.ServiceID),
+			zap.String("environment_id", req.EnvironmentID),
+			zap.String("version", req.Version),
+		)
+
+		return toDomainDeployment(d), nil
+	}
+
 	// Validate template version exists and is active
 	tv, err := s.lookup.GetTemplateVersionByID(ctx, req.TemplateVersionID)
 	if err != nil {
@@ -444,6 +491,122 @@ func (s *ServiceImpl) Rollback(ctx context.Context, id string) (*Deployment, err
 	)
 
 	return toDomainDeployment(updated), nil
+}
+
+// TriggerDeployment creates the Argo CD Application for a deployment that was previously
+// created in pending state (e.g. after approval is approved). It transitions the deployment to deploying.
+func (s *ServiceImpl) TriggerDeployment(ctx context.Context, id string) error {
+	d, err := s.store.GetDeployment(ctx, id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return ErrDeploymentNotFound
+		}
+		return fmt.Errorf("get deployment: %w", err)
+	}
+
+	if d.Status != entdeployment.StatusPending {
+		return fmt.Errorf("%w: deployment is not pending (current status: %s)", ErrInvalidInput, d.Status)
+	}
+
+	// Look up environment for namespace
+	env, err := s.lookup.GetEnvironmentByID(ctx, d.EnvironmentID)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return fmt.Errorf("%w: environment not found", ErrInvalidInput)
+		}
+		return fmt.Errorf("lookup environment: %w", err)
+	}
+
+	// Look up template version and template for chart info
+	tv, err := s.lookup.GetTemplateVersionByID(ctx, d.TemplateVersionID)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return fmt.Errorf("%w: template version not found", ErrInvalidInput)
+		}
+		return fmt.Errorf("lookup template version: %w", err)
+	}
+
+	tmpl, err := s.lookup.GetTemplateByID(ctx, tv.TemplateID)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return fmt.Errorf("%w: template not found", ErrInvalidInput)
+		}
+		return fmt.Errorf("lookup template: %w", err)
+	}
+	if tmpl.Repo == "" {
+		return fmt.Errorf("%w: template has no repo URL configured", ErrInvalidInput)
+	}
+
+	argocdAppName := generateArgocdAppName(d.ServiceID, d.EnvironmentID)
+
+	err = s.argocd.CreateApplication(ctx, ArgoCDAppReq{
+		Name:      argocdAppName,
+		Namespace: env.NamespacePattern,
+		RepoURL:   tmpl.Repo,
+		Chart:     tmpl.Name,
+		TargetRev: tv.Version,
+		Values:    d.ValuesOverride,
+	})
+	if err != nil {
+		s.logger.Error("failed to create Argo CD application",
+			zap.String("name", argocdAppName),
+			zap.Error(err),
+		)
+		return fmt.Errorf("%w: %v", ErrArgoCDUnavailable, err)
+	}
+
+	// Update deployment to deploying status
+	upd := s.store.UpdateDeploymentOne(id).
+		SetStatus(entdeployment.StatusDeploying).
+		SetArgocdAppName(argocdAppName)
+
+	_, err = s.store.SaveDeploymentUpdate(ctx, upd)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return ErrDeploymentNotFound
+		}
+		return fmt.Errorf("update deployment: %w", err)
+	}
+
+	s.logger.Info("deployment triggered after approval",
+		zap.String("id", id),
+		zap.String("argocd_app", argocdAppName),
+	)
+
+	return nil
+}
+
+// CancelDeployment marks a pending deployment as cancelled.
+// This is called when an approval is rejected or times out.
+func (s *ServiceImpl) CancelDeployment(ctx context.Context, id string) error {
+	d, err := s.store.GetDeployment(ctx, id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return ErrDeploymentNotFound
+		}
+		return fmt.Errorf("get deployment: %w", err)
+	}
+
+	if d.Status != entdeployment.StatusPending {
+		return fmt.Errorf("%w: deployment is not pending (current status: %s)", ErrInvalidInput, d.Status)
+	}
+
+	upd := s.store.UpdateDeploymentOne(id).
+		SetStatus(entdeployment.StatusCancelled)
+
+	_, err = s.store.SaveDeploymentUpdate(ctx, upd)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return ErrDeploymentNotFound
+		}
+		return fmt.Errorf("cancel deployment: %w", err)
+	}
+
+	s.logger.Info("deployment cancelled",
+		zap.String("id", id),
+	)
+
+	return nil
 }
 
 // --- Helpers ---

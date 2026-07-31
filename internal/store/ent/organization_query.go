@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/whg517/fleet/internal/store/ent/approval"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
 	"github.com/whg517/fleet/internal/store/ent/configsnapshot"
 	"github.com/whg517/fleet/internal/store/ent/deployment"
@@ -39,6 +40,7 @@ type OrganizationQuery struct {
 	withTemplates       *TemplateQuery
 	withDeployments     *DeploymentQuery
 	withConfigSnapshots *ConfigSnapshotQuery
+	withApprovals       *ApprovalQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -251,6 +253,28 @@ func (_q *OrganizationQuery) QueryConfigSnapshots() *ConfigSnapshotQuery {
 	return query
 }
 
+// QueryApprovals chains the current query on the "approvals" edge.
+func (_q *OrganizationQuery) QueryApprovals() *ApprovalQuery {
+	query := (&ApprovalClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(organization.Table, organization.FieldID, selector),
+			sqlgraph.To(approval.Table, approval.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, organization.ApprovalsTable, organization.ApprovalsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
 // First returns the first Organization entity from the query.
 // Returns a *NotFoundError when no Organization was found.
 func (_q *OrganizationQuery) First(ctx context.Context) (*Organization, error) {
@@ -451,6 +475,7 @@ func (_q *OrganizationQuery) Clone() *OrganizationQuery {
 		withTemplates:       _q.withTemplates.Clone(),
 		withDeployments:     _q.withDeployments.Clone(),
 		withConfigSnapshots: _q.withConfigSnapshots.Clone(),
+		withApprovals:       _q.withApprovals.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -545,6 +570,17 @@ func (_q *OrganizationQuery) WithConfigSnapshots(opts ...func(*ConfigSnapshotQue
 	return _q
 }
 
+// WithApprovals tells the query-builder to eager-load the nodes that are connected to
+// the "approvals" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *OrganizationQuery) WithApprovals(opts ...func(*ApprovalQuery)) *OrganizationQuery {
+	query := (&ApprovalClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withApprovals = query
+	return _q
+}
+
 // GroupBy is used to group vertices by one or more fields/columns.
 // It is often used with aggregate functions, like: count, max, mean, min, sum.
 //
@@ -623,7 +659,7 @@ func (_q *OrganizationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 	var (
 		nodes       = []*Organization{}
 		_spec       = _q.querySpec()
-		loadedTypes = [8]bool{
+		loadedTypes = [9]bool{
 			_q.withUsers != nil,
 			_q.withClusters != nil,
 			_q.withEnvironments != nil,
@@ -632,6 +668,7 @@ func (_q *OrganizationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 			_q.withTemplates != nil,
 			_q.withDeployments != nil,
 			_q.withConfigSnapshots != nil,
+			_q.withApprovals != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -705,6 +742,13 @@ func (_q *OrganizationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 		if err := _q.loadConfigSnapshots(ctx, query, nodes,
 			func(n *Organization) { n.Edges.ConfigSnapshots = []*ConfigSnapshot{} },
 			func(n *Organization, e *ConfigSnapshot) { n.Edges.ConfigSnapshots = append(n.Edges.ConfigSnapshots, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withApprovals; query != nil {
+		if err := _q.loadApprovals(ctx, query, nodes,
+			func(n *Organization) { n.Edges.Approvals = []*Approval{} },
+			func(n *Organization, e *Approval) { n.Edges.Approvals = append(n.Edges.Approvals, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -936,6 +980,36 @@ func (_q *OrganizationQuery) loadConfigSnapshots(ctx context.Context, query *Con
 	}
 	query.Where(predicate.ConfigSnapshot(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(organization.ConfigSnapshotsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.OrgID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "org_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *OrganizationQuery) loadApprovals(ctx context.Context, query *ApprovalQuery, nodes []*Organization, init func(*Organization), assign func(*Organization, *Approval)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[string]*Organization)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(approval.FieldOrgID)
+	}
+	query.Where(predicate.Approval(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(organization.ApprovalsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

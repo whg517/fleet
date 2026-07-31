@@ -1,23 +1,37 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/whg517/fleet/internal/domain/approval"
 	"github.com/whg517/fleet/internal/domain/deployment"
 )
 
 // DeploymentHandler handles deployment management API endpoints.
 type DeploymentHandler struct {
-	svc deployment.Service
+	svc             deployment.Service
+	approvalCreator approvalCreator
+}
+
+// approvalCreator is an optional callback that creates an approval request
+// when a deployment is created in pending state (environment requires approval).
+type approvalCreator interface {
+	RequestApproval(ctx context.Context, deploymentID string, req approval.RequestApprovalReq) (*approval.Approval, error)
 }
 
 // NewDeploymentHandler creates a DeploymentHandler.
 func NewDeploymentHandler(svc deployment.Service) *DeploymentHandler {
 	return &DeploymentHandler{svc: svc}
+}
+
+// SetApprovalCreator sets the approval creator for automatic approval creation.
+func (h *DeploymentHandler) SetApprovalCreator(ac approvalCreator) {
+	h.approvalCreator = ac
 }
 
 // Create creates a new deployment.
@@ -41,6 +55,27 @@ func (h *DeploymentHandler) Create(c echo.Context) error {
 	}
 
 	c.Logger().Infof("audit: deployment created id=%s service_id=%s version=%s", d.ID, d.ServiceID, d.Version)
+
+	// If the deployment is pending (environment requires approval), create an approval request
+	if d.Status == deployment.StatusPending && h.approvalCreator != nil {
+		req := approval.RequestApprovalReq{
+			DeploymentID:  d.ID,
+			ServiceID:     d.ServiceID,
+			EnvironmentID: d.EnvironmentID,
+		}
+		if uid, ok := c.Get("user_id").(string); ok {
+			req.RequesterID = uid
+		}
+		if oid, ok := c.Get("org_id").(string); ok {
+			req.OrgID = oid
+		}
+
+		_, err := h.approvalCreator.RequestApproval(c.Request().Context(), d.ID, req)
+		if err != nil {
+			c.Logger().Errorf("failed to create approval for deployment %s: %v", d.ID, err)
+			// Don't fail the deployment creation — the approval can be retried.
+		}
+	}
 
 	return createdResponse(c, d)
 }

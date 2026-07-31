@@ -68,9 +68,11 @@ type DeploymentEdges struct {
 	Cluster *Cluster `json:"cluster,omitempty"`
 	// Organization holds the value of the organization edge.
 	Organization *Organization `json:"organization,omitempty"`
+	// Approvals holds the value of the approvals edge.
+	Approvals []*Approval `json:"approvals,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [4]bool
+	loadedTypes [5]bool
 }
 
 // ServiceOrErr returns the Service value or an error if the edge
@@ -115,6 +117,15 @@ func (e DeploymentEdges) OrganizationOrErr() (*Organization, error) {
 		return nil, &NotFoundError{label: organization.Label}
 	}
 	return nil, &NotLoadedError{edge: "organization"}
+}
+
+// ApprovalsOrErr returns the Approvals value or an error if the edge
+// was not loaded in eager-loading.
+func (e DeploymentEdges) ApprovalsOrErr() ([]*Approval, error) {
+	if e.loadedTypes[4] {
+		return e.Approvals, nil
+	}
+	return nil, &NotLoadedError{edge: "approvals"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -273,6 +284,11 @@ func (_m *Deployment) QueryCluster() *ClusterQuery {
 // QueryOrganization queries the "organization" edge of the Deployment entity.
 func (_m *Deployment) QueryOrganization() *OrganizationQuery {
 	return NewDeploymentClient(_m.config).QueryOrganization(_m)
+}
+
+// QueryApprovals queries the "approvals" edge of the Deployment entity.
+func (_m *Deployment) QueryApprovals() *ApprovalQuery {
+	return NewDeploymentClient(_m.config).QueryApprovals(_m)
 }
 
 // Update returns a builder for updating this Deployment.

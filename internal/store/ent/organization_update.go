@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/whg517/fleet/internal/store/ent/approval"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
 	"github.com/whg517/fleet/internal/store/ent/configsnapshot"
 	"github.com/whg517/fleet/internal/store/ent/deployment"
@@ -224,6 +225,21 @@ func (_u *OrganizationUpdate) AddConfigSnapshots(v ...*ConfigSnapshot) *Organiza
 	return _u.AddConfigSnapshotIDs(ids...)
 }
 
+// AddApprovalIDs adds the "approvals" edge to the Approval entity by IDs.
+func (_u *OrganizationUpdate) AddApprovalIDs(ids ...string) *OrganizationUpdate {
+	_u.mutation.AddApprovalIDs(ids...)
+	return _u
+}
+
+// AddApprovals adds the "approvals" edges to the Approval entity.
+func (_u *OrganizationUpdate) AddApprovals(v ...*Approval) *OrganizationUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddApprovalIDs(ids...)
+}
+
 // Mutation returns the OrganizationMutation object of the builder.
 func (_u *OrganizationUpdate) Mutation() *OrganizationMutation {
 	return _u.mutation
@@ -395,6 +411,27 @@ func (_u *OrganizationUpdate) RemoveConfigSnapshots(v ...*ConfigSnapshot) *Organ
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveConfigSnapshotIDs(ids...)
+}
+
+// ClearApprovals clears all "approvals" edges to the Approval entity.
+func (_u *OrganizationUpdate) ClearApprovals() *OrganizationUpdate {
+	_u.mutation.ClearApprovals()
+	return _u
+}
+
+// RemoveApprovalIDs removes the "approvals" edge to Approval entities by IDs.
+func (_u *OrganizationUpdate) RemoveApprovalIDs(ids ...string) *OrganizationUpdate {
+	_u.mutation.RemoveApprovalIDs(ids...)
+	return _u
+}
+
+// RemoveApprovals removes "approvals" edges to Approval entities.
+func (_u *OrganizationUpdate) RemoveApprovals(v ...*Approval) *OrganizationUpdate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveApprovalIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -838,6 +875,51 @@ func (_u *OrganizationUpdate) sqlSave(ctx context.Context) (_node int, err error
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.ApprovalsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   organization.ApprovalsTable,
+			Columns: []string{organization.ApprovalsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(approval.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedApprovalsIDs(); len(nodes) > 0 && !_u.mutation.ApprovalsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   organization.ApprovalsTable,
+			Columns: []string{organization.ApprovalsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(approval.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ApprovalsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   organization.ApprovalsTable,
+			Columns: []string{organization.ApprovalsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(approval.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{organization.Label}
@@ -1046,6 +1128,21 @@ func (_u *OrganizationUpdateOne) AddConfigSnapshots(v ...*ConfigSnapshot) *Organ
 	return _u.AddConfigSnapshotIDs(ids...)
 }
 
+// AddApprovalIDs adds the "approvals" edge to the Approval entity by IDs.
+func (_u *OrganizationUpdateOne) AddApprovalIDs(ids ...string) *OrganizationUpdateOne {
+	_u.mutation.AddApprovalIDs(ids...)
+	return _u
+}
+
+// AddApprovals adds the "approvals" edges to the Approval entity.
+func (_u *OrganizationUpdateOne) AddApprovals(v ...*Approval) *OrganizationUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddApprovalIDs(ids...)
+}
+
 // Mutation returns the OrganizationMutation object of the builder.
 func (_u *OrganizationUpdateOne) Mutation() *OrganizationMutation {
 	return _u.mutation
@@ -1217,6 +1314,27 @@ func (_u *OrganizationUpdateOne) RemoveConfigSnapshots(v ...*ConfigSnapshot) *Or
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveConfigSnapshotIDs(ids...)
+}
+
+// ClearApprovals clears all "approvals" edges to the Approval entity.
+func (_u *OrganizationUpdateOne) ClearApprovals() *OrganizationUpdateOne {
+	_u.mutation.ClearApprovals()
+	return _u
+}
+
+// RemoveApprovalIDs removes the "approvals" edge to Approval entities by IDs.
+func (_u *OrganizationUpdateOne) RemoveApprovalIDs(ids ...string) *OrganizationUpdateOne {
+	_u.mutation.RemoveApprovalIDs(ids...)
+	return _u
+}
+
+// RemoveApprovals removes "approvals" edges to Approval entities.
+func (_u *OrganizationUpdateOne) RemoveApprovals(v ...*Approval) *OrganizationUpdateOne {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveApprovalIDs(ids...)
 }
 
 // Where appends a list predicates to the OrganizationUpdate builder.
@@ -1683,6 +1801,51 @@ func (_u *OrganizationUpdateOne) sqlSave(ctx context.Context) (_node *Organizati
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(configsnapshot.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ApprovalsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   organization.ApprovalsTable,
+			Columns: []string{organization.ApprovalsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(approval.FieldID, field.TypeString),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedApprovalsIDs(); len(nodes) > 0 && !_u.mutation.ApprovalsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   organization.ApprovalsTable,
+			Columns: []string{organization.ApprovalsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(approval.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ApprovalsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   organization.ApprovalsTable,
+			Columns: []string{organization.ApprovalsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(approval.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {

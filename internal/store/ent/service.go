@@ -53,9 +53,11 @@ type ServiceEdges struct {
 	Deployments []*Deployment `json:"deployments,omitempty"`
 	// ConfigSnapshots holds the value of the config_snapshots edge.
 	ConfigSnapshots []*ConfigSnapshot `json:"config_snapshots,omitempty"`
+	// Approvals holds the value of the approvals edge.
+	Approvals []*Approval `json:"approvals,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [4]bool
 }
 
 // OrganizationOrErr returns the Organization value or an error if the edge
@@ -85,6 +87,15 @@ func (e ServiceEdges) ConfigSnapshotsOrErr() ([]*ConfigSnapshot, error) {
 		return e.ConfigSnapshots, nil
 	}
 	return nil, &NotLoadedError{edge: "config_snapshots"}
+}
+
+// ApprovalsOrErr returns the Approvals value or an error if the edge
+// was not loaded in eager-loading.
+func (e ServiceEdges) ApprovalsOrErr() ([]*Approval, error) {
+	if e.loadedTypes[3] {
+		return e.Approvals, nil
+	}
+	return nil, &NotLoadedError{edge: "approvals"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -207,6 +218,11 @@ func (_m *Service) QueryDeployments() *DeploymentQuery {
 // QueryConfigSnapshots queries the "config_snapshots" edge of the Service entity.
 func (_m *Service) QueryConfigSnapshots() *ConfigSnapshotQuery {
 	return NewServiceClient(_m.config).QueryConfigSnapshots(_m)
+}
+
+// QueryApprovals queries the "approvals" edge of the Service entity.
+func (_m *Service) QueryApprovals() *ApprovalQuery {
+	return NewServiceClient(_m.config).QueryApprovals(_m)
 }
 
 // Update returns a builder for updating this Service.

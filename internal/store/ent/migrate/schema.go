@@ -8,6 +8,86 @@ import (
 )
 
 var (
+	// ApprovalsColumns holds the columns for the "approvals" table.
+	ApprovalsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "requester_id", Type: field.TypeString},
+		{Name: "approver_id", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"pending", "approved", "rejected", "timeout", "cancelled"}, Default: "pending"},
+		{Name: "timeout_at", Type: field.TypeTime},
+		{Name: "decided_at", Type: field.TypeTime, Nullable: true},
+		{Name: "comment", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "deployment_id", Type: field.TypeString},
+		{Name: "environment_id", Type: field.TypeString},
+		{Name: "org_id", Type: field.TypeString, Nullable: true},
+		{Name: "service_id", Type: field.TypeString},
+	}
+	// ApprovalsTable holds the schema information for the "approvals" table.
+	ApprovalsTable = &schema.Table{
+		Name:       "approvals",
+		Columns:    ApprovalsColumns,
+		PrimaryKey: []*schema.Column{ApprovalsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "approvals_deployments_approvals",
+				Columns:    []*schema.Column{ApprovalsColumns[9]},
+				RefColumns: []*schema.Column{DeploymentsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "approvals_environments_approvals",
+				Columns:    []*schema.Column{ApprovalsColumns[10]},
+				RefColumns: []*schema.Column{EnvironmentsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "approvals_organizations_approvals",
+				Columns:    []*schema.Column{ApprovalsColumns[11]},
+				RefColumns: []*schema.Column{OrganizationsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "approvals_services_approvals",
+				Columns:    []*schema.Column{ApprovalsColumns[12]},
+				RefColumns: []*schema.Column{ServicesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "approval_org_id",
+				Unique:  false,
+				Columns: []*schema.Column{ApprovalsColumns[11]},
+			},
+			{
+				Name:    "approval_deployment_id",
+				Unique:  false,
+				Columns: []*schema.Column{ApprovalsColumns[9]},
+			},
+			{
+				Name:    "approval_service_id",
+				Unique:  false,
+				Columns: []*schema.Column{ApprovalsColumns[12]},
+			},
+			{
+				Name:    "approval_environment_id",
+				Unique:  false,
+				Columns: []*schema.Column{ApprovalsColumns[10]},
+			},
+			{
+				Name:    "approval_status",
+				Unique:  false,
+				Columns: []*schema.Column{ApprovalsColumns[3]},
+			},
+			{
+				Name:    "approval_service_id_environment_id",
+				Unique:  false,
+				Columns: []*schema.Column{ApprovalsColumns[12], ApprovalsColumns[10]},
+			},
+		},
+	}
 	// AuditLogsColumns holds the columns for the "audit_logs" table.
 	AuditLogsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -592,6 +672,7 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		ApprovalsTable,
 		AuditLogsTable,
 		ClustersTable,
 		ConfigSnapshotsTable,
@@ -609,6 +690,10 @@ var (
 )
 
 func init() {
+	ApprovalsTable.ForeignKeys[0].RefTable = DeploymentsTable
+	ApprovalsTable.ForeignKeys[1].RefTable = EnvironmentsTable
+	ApprovalsTable.ForeignKeys[2].RefTable = OrganizationsTable
+	ApprovalsTable.ForeignKeys[3].RefTable = ServicesTable
 	ClustersTable.ForeignKeys[0].RefTable = OrganizationsTable
 	ConfigSnapshotsTable.ForeignKeys[0].RefTable = EnvironmentsTable
 	ConfigSnapshotsTable.ForeignKeys[1].RefTable = OrganizationsTable

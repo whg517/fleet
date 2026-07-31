@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/whg517/fleet/internal/store/ent/approval"
 	"github.com/whg517/fleet/internal/store/ent/cluster"
 	"github.com/whg517/fleet/internal/store/ent/configsnapshot"
 	"github.com/whg517/fleet/internal/store/ent/deployment"
@@ -192,6 +193,21 @@ func (_c *EnvironmentCreate) AddConfigSnapshots(v ...*ConfigSnapshot) *Environme
 		ids[i] = v[i].ID
 	}
 	return _c.AddConfigSnapshotIDs(ids...)
+}
+
+// AddApprovalIDs adds the "approvals" edge to the Approval entity by IDs.
+func (_c *EnvironmentCreate) AddApprovalIDs(ids ...string) *EnvironmentCreate {
+	_c.mutation.AddApprovalIDs(ids...)
+	return _c
+}
+
+// AddApprovals adds the "approvals" edges to the Approval entity.
+func (_c *EnvironmentCreate) AddApprovals(v ...*Approval) *EnvironmentCreate {
+	ids := make([]string, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddApprovalIDs(ids...)
 }
 
 // Mutation returns the EnvironmentMutation object of the builder.
@@ -384,6 +400,22 @@ func (_c *EnvironmentCreate) createSpec() (*Environment, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(configsnapshot.FieldID, field.TypeString),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ApprovalsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   environment.ApprovalsTable,
+			Columns: []string{environment.ApprovalsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(approval.FieldID, field.TypeString),
 			},
 		}
 		for _, k := range nodes {
